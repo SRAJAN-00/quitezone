@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.local
+.expo/
+dist/
+web-build/
+build/
+*.log
+.codex
+.gradle-user-home/
+.DS_Store
+*.tsbuildinfo
