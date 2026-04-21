@@ -17,8 +17,6 @@ import { useAuth } from "@/context/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Zone } from "@/lib/quietzone-types";
 import { apiRequest, getUserFacingError } from "@/lib/api";
-import { getLastAutomationResult, syncGeofencesFromApi } from "@/lib/silent-automation/geofence-runtime";
-import { setRingerMode } from "@/lib/silent-automation/native";
 
 const FALLBACK_REGION = {
   latitude: 12.9716,
@@ -37,7 +35,6 @@ export default function ZoneEditorScreen() {
   const { accessToken, isAuthenticated, isHydrating } = useAuth();
 
   const [name, setName] = useState("");
-  const [originalName, setOriginalName] = useState("");
   const [radiusMeters, setRadiusMeters] = useState(100);
   const [targetMode, setTargetMode] = useState<"silent" | "vibrate">("silent");
   const [isActive, setIsActive] = useState(true);
@@ -88,7 +85,6 @@ export default function ZoneEditorScreen() {
           }
 
           setName(current.name);
-          setOriginalName(current.name);
           setRadiusMeters(current.radiusMeters);
           setTargetMode(current.targetMode);
           setIsActive(current.isActive);
@@ -188,13 +184,6 @@ export default function ZoneEditorScreen() {
           body: payload,
           token: accessToken,
         });
-
-        if (!isActive) {
-          const lastResult = await getLastAutomationResult();
-          if (lastResult?.transition === "enter" && lastResult?.zoneName === originalName) {
-            await setRingerMode("normal");
-          }
-        }
       } else {
         await apiRequest("/api/zones", {
           method: "POST",
@@ -203,7 +192,6 @@ export default function ZoneEditorScreen() {
         });
       }
 
-      await syncGeofencesFromApi(accessToken);
       router.back();
     } catch (nextError) {
       setError(getUserFacingError(nextError));
@@ -234,17 +222,10 @@ export default function ZoneEditorScreen() {
     setError("");
 
     try {
-      const lastResult = await getLastAutomationResult();
-      if (lastResult?.transition === "enter" && lastResult?.zoneName === originalName) {
-        await setRingerMode("normal");
-      }
-
       await apiRequest(`/api/zones/${zoneId}`, {
         method: "DELETE",
         token: accessToken,
       });
-
-      await syncGeofencesFromApi(accessToken);
       router.back();
     } catch (nextError) {
       setError(getUserFacingError(nextError));

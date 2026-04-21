@@ -19,7 +19,7 @@ cp .env.example .env
 Set `EXPO_PUBLIC_API_URL` to your backend, for example:
 
 ```env
-EXPO_PUBLIC_API_URL=http://127.0.0.1:4000
+EXPO_PUBLIC_API_URL=https://quietzone-backend.onrender.com
 ```
 
 `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` is optional and only needed if you switch back to a Google Maps SDK view.
