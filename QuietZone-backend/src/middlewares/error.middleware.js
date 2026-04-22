@@ -8,6 +8,24 @@ function fallbackCodeFromStatus(statusCode) {
   return "INTERNAL_ERROR";
 }
 
+function buildDuplicateKeyErrorPayload(error) {
+  const duplicatedFields = error && error.keyPattern ? Object.keys(error.keyPattern) : [];
+
+  if (duplicatedFields.includes("email")) {
+    return {
+      statusCode: 409,
+      message: "Email is already registered",
+      code: "AUTH_EMAIL_EXISTS",
+    };
+  }
+
+  return {
+    statusCode: 409,
+    message: "Resource already exists",
+    code: "CONFLICT",
+  };
+}
+
 function notFoundHandler(_req, res) {
   res.status(404).json({
     message: "Route not found",
@@ -16,6 +34,11 @@ function notFoundHandler(_req, res) {
 }
 
 function errorHandler(error, _req, res, _next) {
+  if (error && error.name === "MongoServerError" && error.code === 11000) {
+    const duplicatePayload = buildDuplicateKeyErrorPayload(error);
+    return res.status(duplicatePayload.statusCode).json(duplicatePayload);
+  }
+
   const statusCode = error.statusCode || 500;
   const payload = {
     message: error.message || "Internal server error",
