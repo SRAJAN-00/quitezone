@@ -9,7 +9,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 export default function TabLayout() {
   const colorScheme = useColorScheme() ?? "light";
   const theme = Colors[colorScheme];
-  const { isAuthenticated, isHydrating } = useAuth();
+  const { isAuthenticated, isHydrating, user } = useAuth();
 
   if (isHydrating) {
     return <AuthLoadingScreen />;
@@ -57,6 +57,14 @@ export default function TabLayout() {
         options={{
           title: "Activity",
           tabBarIcon: ({ color, size }) => <MaterialIcons color={color} name="history" size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="admin"
+        options={{
+          href: user?.role === "admin" ? undefined : null,
+          title: "Admin",
+          tabBarIcon: ({ color, size }) => <MaterialIcons color={color} name="admin-panel-settings" size={size} />,
         }}
       />
     </Tabs>

@@ -120,6 +120,7 @@ Optional Firebase variables, only if push notifications are enabled:
 
 ### 4) Deploy and verify
 
+
 - Deploy the service.
 - Open the Railway public URL and check:
    - `/health`
