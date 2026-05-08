@@ -4,14 +4,16 @@ import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 
 import { apiRequest } from "@/lib/api";
-import { Zone } from "@/lib/quietzone-types";
+import { Zone, ZoneSchedule } from "@/lib/quietzone-types";
 import { loadStoredSession } from "@/lib/session-storage";
+import { normalizeZoneSchedule } from "@/lib/zone-schedule";
 
 import { getSilentAutomationStatus, setRingerMode } from "./native";
 
 const TASK_NAME = "quietzone-android-geofence-task";
 const ZONES_KEY = "quietzone.automation.zones";
 const LAST_RESULT_KEY = "quietzone.automation.lastResult";
+const ACTIVE_ZONE_STATES_KEY = "quietzone.automation.active-zones";
 const COOLDOWN_MS = 20000;
 
 const recentTransitionByZone = new Map<string, number>();
@@ -19,7 +21,9 @@ const recentTransitionByZone = new Map<string, number>();
 type StoredAutomationZone = Pick<
   Zone,
   "id" | "name" | "targetMode" | "lat" | "lng" | "radiusMeters"
->;
+> & {
+  schedule: ZoneSchedule;
+};
 
 type AutomationLastResult = {
   timestamp: string;
@@ -47,6 +51,19 @@ async function saveLastResult(result: AutomationLastResult) {
   await SecureStore.setItemAsync(LAST_RESULT_KEY, JSON.stringify(result));
 }
 
+async function saveActiveZoneStates(states: Record<string, boolean>) {
+  await SecureStore.setItemAsync(ACTIVE_ZONE_STATES_KEY, JSON.stringify(states));
+}
+
+async function loadActiveZoneStates() {
+  const raw = await SecureStore.getItemAsync(ACTIVE_ZONE_STATES_KEY);
+  if (!raw) {
+    return {} as Record<string, boolean>;
+  }
+
+  return JSON.parse(raw) as Record<string, boolean>;
+}
+
 export async function getLastAutomationResult() {
   const raw = await SecureStore.getItemAsync(LAST_RESULT_KEY);
   if (!raw) {
@@ -65,6 +82,31 @@ function shouldSkipByCooldown(zoneId: string) {
 
   recentTransitionByZone.set(zoneId, now);
   return false;
+}
+
+function getMinutesFromTime(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function isScheduleActive(schedule: ZoneSchedule, now = new Date()) {
+  if (!schedule.enabled) {
+    return true;
+  }
+
+  if (!schedule.daysOfWeek.includes(now.getDay())) {
+    return false;
+  }
+
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const startMinutes = getMinutesFromTime(schedule.startTime);
+  const endMinutes = getMinutesFromTime(schedule.endTime);
+
+  if (startMinutes < endMinutes) {
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  }
+
+  return currentMinutes >= startMinutes || currentMinutes < endMinutes;
 }
 
 async function postTransitionEvent(options: {
@@ -122,12 +164,45 @@ if (Platform.OS === "android" && !TaskManager.isTaskDefined(TASK_NAME)) {
       return;
     }
 
+    const activeStates = await loadActiveZoneStates();
     const transition =
       eventType === Location.GeofencingEventType.Enter ? "enter" : "exit";
+    const scheduleActive = isScheduleActive(zone.schedule);
+
+    if (transition === "enter" && !scheduleActive) {
+      activeStates[zone.id] = false;
+      await saveActiveZoneStates(activeStates);
+      await saveLastResult({
+        timestamp: new Date().toISOString(),
+        transition,
+        zoneName: zone.name,
+        modeRequested: zone.targetMode,
+        applied: false,
+        blocked: true,
+        reason: "Zone schedule is inactive right now",
+      });
+      await postTransitionEvent({
+        zone,
+        transition,
+        modeApplied: "unknown",
+        previousMode: "normal",
+        applied: false,
+        blocked: true,
+        reason: "Zone schedule is inactive right now",
+      });
+      return;
+    }
+
+    if (transition === "exit" && !activeStates[zone.id]) {
+      return;
+    }
+
     const modeRequested: "silent" | "vibrate" | "normal" =
       transition === "enter" ? zone.targetMode : "normal";
 
     const result = await setRingerMode(modeRequested);
+    activeStates[zone.id] = transition === "enter" ? result.applied : false;
+    await saveActiveZoneStates(activeStates);
 
     await saveLastResult({
       timestamp: new Date().toISOString(),
@@ -168,6 +243,7 @@ export async function syncGeofencesFromApi(accessToken: string) {
     lat: zone.lat,
     lng: zone.lng,
     radiusMeters: zone.radiusMeters,
+    schedule: normalizeZoneSchedule(zone.schedule),
   }));
 
   await saveAutomationZones(storedZones);

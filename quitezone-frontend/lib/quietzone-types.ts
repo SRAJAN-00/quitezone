@@ -4,6 +4,13 @@ export type AuthUser = {
   role: "user" | "admin";
 };
 
+export type ZoneSchedule = {
+  enabled: boolean;
+  daysOfWeek: number[];
+  startTime: string;
+  endTime: string;
+};
+
 export type Zone = {
   id: string;
   name: string;
@@ -12,6 +19,7 @@ export type Zone = {
   radiusMeters: number;
   targetMode: "silent" | "vibrate";
   isActive: boolean;
+  schedule?: ZoneSchedule;
   ownerId?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -44,6 +52,7 @@ export type AdminZone = {
   radiusMeters: number;
   targetMode: "silent" | "vibrate";
   isActive: boolean;
+  schedule?: ZoneSchedule;
   lat: number;
   lng: number;
   createdAt?: string;

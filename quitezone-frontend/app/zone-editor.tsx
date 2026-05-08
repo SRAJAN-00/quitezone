@@ -17,6 +17,11 @@ import { useAuth } from "@/context/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Zone } from "@/lib/quietzone-types";
 import { apiRequest, getUserFacingError } from "@/lib/api";
+import {
+  DEFAULT_ZONE_SCHEDULE,
+  normalizeZoneSchedule,
+  validateZoneSchedule,
+} from "@/lib/zone-schedule";
 
 const FALLBACK_REGION = {
   latitude: 12.9716,
@@ -26,6 +31,15 @@ const FALLBACK_REGION = {
 };
 
 const RADIUS_PRESETS = [50, 100, 150, 250, 400];
+const DAYS = [
+  { label: "Sun", value: 0 },
+  { label: "Mon", value: 1 },
+  { label: "Tue", value: 2 },
+  { label: "Wed", value: 3 },
+  { label: "Thu", value: 4 },
+  { label: "Fri", value: 5 },
+  { label: "Sat", value: 6 },
+];
 
 export default function ZoneEditorScreen() {
   const theme = getTheme(useColorScheme());
@@ -38,6 +52,10 @@ export default function ZoneEditorScreen() {
   const [radiusMeters, setRadiusMeters] = useState(100);
   const [targetMode, setTargetMode] = useState<"silent" | "vibrate">("silent");
   const [isActive, setIsActive] = useState(true);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleDays, setScheduleDays] = useState<number[]>([...DEFAULT_ZONE_SCHEDULE.daysOfWeek]);
+  const [scheduleStartTime, setScheduleStartTime] = useState(DEFAULT_ZONE_SCHEDULE.startTime);
+  const [scheduleEndTime, setScheduleEndTime] = useState(DEFAULT_ZONE_SCHEDULE.endTime);
   const [coordinate, setCoordinate] = useState({
     latitude: FALLBACK_REGION.latitude,
     longitude: FALLBACK_REGION.longitude,
@@ -88,6 +106,11 @@ export default function ZoneEditorScreen() {
           setRadiusMeters(current.radiusMeters);
           setTargetMode(current.targetMode);
           setIsActive(current.isActive);
+          const currentSchedule = normalizeZoneSchedule(current.schedule);
+          setScheduleEnabled(currentSchedule.enabled);
+          setScheduleDays(currentSchedule.daysOfWeek);
+          setScheduleStartTime(currentSchedule.startTime);
+          setScheduleEndTime(currentSchedule.endTime);
           setCoordinate({
             latitude: current.lat,
             longitude: current.lng,
@@ -165,6 +188,18 @@ export default function ZoneEditorScreen() {
       return;
     }
 
+    const schedule = normalizeZoneSchedule({
+      enabled: scheduleEnabled,
+      daysOfWeek: scheduleDays,
+      startTime: scheduleStartTime,
+      endTime: scheduleEndTime,
+    });
+    const scheduleError = validateZoneSchedule(schedule);
+    if (scheduleError) {
+      setError(scheduleError);
+      return;
+    }
+
     setSaving(true);
     setError("");
 
@@ -176,6 +211,7 @@ export default function ZoneEditorScreen() {
         radiusMeters,
         targetMode,
         isActive,
+        schedule,
       };
 
       if (isEdit && zoneId) {
@@ -232,6 +268,12 @@ export default function ZoneEditorScreen() {
     } finally {
       setDeleting(false);
     }
+  }
+
+  function toggleScheduleDay(day: number) {
+    setScheduleDays((current) =>
+      current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort((a, b) => a - b)
+    );
   }
 
   return (
@@ -363,6 +405,75 @@ export default function ZoneEditorScreen() {
               </View>
             </View>
 
+            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={styles.switchRow}>
+                <View style={styles.switchCopy}>
+                  <Text style={[styles.sectionLabel, { color: theme.text }]}>Schedule</Text>
+                  <Text style={[styles.switchHint, { color: theme.muted }]}>
+                    Limit this zone to selected days and hours instead of keeping it active all day.
+                  </Text>
+                </View>
+                <Switch onValueChange={setScheduleEnabled} value={scheduleEnabled} />
+              </View>
+
+              {scheduleEnabled ? (
+                <>
+                  <View style={styles.scheduleSection}>
+                    <Text style={[styles.cardMeta, { color: theme.mutedStrong }]}>Days</Text>
+                    <View style={styles.choiceWrap}>
+                      {DAYS.map((day) => {
+                        const selected = scheduleDays.includes(day.value);
+                        return (
+                          <Pressable
+                            key={day.value}
+                            onPress={() => toggleScheduleDay(day.value)}
+                            style={[
+                              styles.choice,
+                              {
+                                backgroundColor: selected ? theme.accent : theme.input,
+                                borderColor: selected ? theme.accent : theme.border,
+                              },
+                            ]}
+                          >
+                            <Text style={{ color: selected ? theme.accentTextOn : theme.text, fontWeight: "700" }}>
+                              {day.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  <View style={styles.timeRow}>
+                    <View style={styles.timeField}>
+                      <QuietInput
+                        autoCapitalize="none"
+                        keyboardType="numbers-and-punctuation"
+                        label="Start"
+                        message="24-hour HH:mm"
+                        onChangeText={setScheduleStartTime}
+                        placeholder="09:00"
+                        theme={theme}
+                        value={scheduleStartTime}
+                      />
+                    </View>
+                    <View style={styles.timeField}>
+                      <QuietInput
+                        autoCapitalize="none"
+                        keyboardType="numbers-and-punctuation"
+                        label="End"
+                        message="24-hour HH:mm"
+                        onChangeText={setScheduleEndTime}
+                        placeholder="17:00"
+                        theme={theme}
+                        value={scheduleEndTime}
+                      />
+                    </View>
+                  </View>
+                </>
+              ) : null}
+            </View>
+
             <View style={styles.buttonStack}>
               <QuietPrimaryButton
                 busy={saving}
@@ -455,6 +566,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
+  scheduleSection: {
+    gap: 10,
+  },
   switchRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -468,6 +582,13 @@ const styles = StyleSheet.create({
   switchHint: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  timeRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  timeField: {
+    flex: 1,
   },
   buttonStack: {
     gap: 12,

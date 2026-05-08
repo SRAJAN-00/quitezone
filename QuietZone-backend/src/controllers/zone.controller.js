@@ -1,7 +1,53 @@
 const mongoose = require("mongoose");
 const Zone = require("../models/Zone");
 const HttpError = require("../utils/httpError");
-const { requireNumber, requireString, requireEnum } = require("../utils/validation");
+const {
+  requireNumber,
+  requireString,
+  requireEnum,
+} = require("../utils/validation");
+
+function requireTimeString(value, fieldName) {
+  if (typeof value !== "string" || !/^([01]\d|2[0-3]):([0-5]\d)$/.test(value)) {
+    throw new HttpError(400, `${fieldName} must be in HH:mm format`, "VALIDATION_ERROR");
+  }
+
+  return value;
+}
+
+function normalizeZoneSchedule(schedule) {
+  if (!schedule || typeof schedule !== "object") {
+    return {
+      enabled: false,
+      daysOfWeek: [],
+      startTime: "09:00",
+      endTime: "17:00",
+    };
+  }
+
+  const enabled = Boolean(schedule.enabled);
+  const daysOfWeek = Array.isArray(schedule.daysOfWeek)
+    ? schedule.daysOfWeek.map((day) => requireNumber(day, "schedule.daysOfWeek", { min: 0, max: 6 }))
+    : [];
+  const uniqueDays = [...new Set(daysOfWeek)].sort((a, b) => a - b);
+  const startTime = requireTimeString(schedule.startTime ?? "09:00", "schedule.startTime");
+  const endTime = requireTimeString(schedule.endTime ?? "17:00", "schedule.endTime");
+
+  if (enabled && uniqueDays.length === 0) {
+    throw new HttpError(400, "schedule.daysOfWeek must include at least one day", "VALIDATION_ERROR");
+  }
+
+  if (enabled && startTime === endTime) {
+    throw new HttpError(400, "schedule start and end must be different", "VALIDATION_ERROR");
+  }
+
+  return {
+    enabled,
+    daysOfWeek: uniqueDays,
+    startTime,
+    endTime,
+  };
+}
 
 function normalizeZonePayload(payload) {
   const name = requireString(payload.name, "name", { min: 2, max: 120 });
@@ -10,6 +56,7 @@ function normalizeZonePayload(payload) {
   const radiusMeters = requireNumber(payload.radiusMeters, "radiusMeters", { min: 50, max: 3000 });
   const targetMode = requireEnum(payload.targetMode, "targetMode", ["silent", "vibrate"]);
   const isActive = payload.isActive === undefined ? true : Boolean(payload.isActive);
+  const schedule = normalizeZoneSchedule(payload.schedule);
 
   return {
     name,
@@ -20,6 +67,7 @@ function normalizeZonePayload(payload) {
     radiusMeters,
     targetMode,
     isActive,
+    schedule,
   };
 }
 
@@ -32,6 +80,12 @@ function mapZone(zone) {
     radiusMeters: zone.radiusMeters,
     targetMode: zone.targetMode,
     isActive: zone.isActive,
+    schedule: zone.schedule ?? {
+      enabled: false,
+      daysOfWeek: [],
+      startTime: "09:00",
+      endTime: "17:00",
+    },
     ownerId: zone.ownerId.toString(),
     createdAt: zone.createdAt,
     updatedAt: zone.updatedAt,
@@ -79,6 +133,7 @@ async function updateZone(req, res, next) {
       radiusMeters: req.body.radiusMeters ?? current.radiusMeters,
       targetMode: req.body.targetMode ?? current.targetMode,
       isActive: req.body.isActive ?? current.isActive,
+      schedule: req.body.schedule ?? current.schedule,
     };
     const normalized = normalizeZonePayload(mergedPayload);
 
@@ -87,6 +142,7 @@ async function updateZone(req, res, next) {
     current.radiusMeters = normalized.radiusMeters;
     current.targetMode = normalized.targetMode;
     current.isActive = normalized.isActive;
+    current.schedule = normalized.schedule;
     await current.save();
 
     res.json({ zone: mapZone(current) });

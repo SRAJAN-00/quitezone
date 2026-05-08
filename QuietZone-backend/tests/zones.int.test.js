@@ -62,6 +62,80 @@ describe("Zone API", () => {
     expect(deleteRes.body.code).toBe("ZONE_NOT_FOUND");
   });
 
+  it("creates and updates a scheduled zone", async () => {
+    const token = await registerAndLogin(app, "schedule@example.com");
+
+    const createRes = await request(app)
+      .post("/api/zones")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Campus Library",
+        lat: 12.91,
+        lng: 74.85,
+        radiusMeters: 150,
+        targetMode: "silent",
+        schedule: {
+          enabled: true,
+          daysOfWeek: [1, 2, 3, 4, 5],
+          startTime: "09:00",
+          endTime: "17:00",
+        },
+      });
+
+    expect(createRes.statusCode).toBe(201);
+    expect(createRes.body.zone.schedule).toEqual({
+      enabled: true,
+      daysOfWeek: [1, 2, 3, 4, 5],
+      startTime: "09:00",
+      endTime: "17:00",
+    });
+
+    const updateRes = await request(app)
+      .patch(`/api/zones/${createRes.body.zone.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        schedule: {
+          enabled: true,
+          daysOfWeek: [0, 6],
+          startTime: "10:30",
+          endTime: "14:00",
+        },
+      });
+
+    expect(updateRes.statusCode).toBe(200);
+    expect(updateRes.body.zone.schedule).toEqual({
+      enabled: true,
+      daysOfWeek: [0, 6],
+      startTime: "10:30",
+      endTime: "14:00",
+    });
+  });
+
+  it("rejects enabled schedules without any days", async () => {
+    const token = await registerAndLogin(app, "invalidschedule@example.com");
+
+    const res = await request(app)
+      .post("/api/zones")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Lecture Hall",
+        lat: 12.91,
+        lng: 74.85,
+        radiusMeters: 100,
+        targetMode: "silent",
+        schedule: {
+          enabled: true,
+          daysOfWeek: [],
+          startTime: "09:00",
+          endTime: "17:00",
+        },
+      });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.message).toMatch("schedule.daysOfWeek");
+    expect(res.body.code).toBe("VALIDATION_ERROR");
+  });
+
   it("requires auth token for protected routes", async () => {
     const res = await request(app).get("/api/zones");
     expect(res.statusCode).toBe(401);

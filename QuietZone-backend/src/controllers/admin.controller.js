@@ -24,6 +24,12 @@ function toZoneResponse(zone) {
     radiusMeters: zone.radiusMeters,
     targetMode: zone.targetMode,
     isActive: zone.isActive,
+    schedule: zone.schedule ?? {
+      enabled: false,
+      daysOfWeek: [],
+      startTime: "09:00",
+      endTime: "17:00",
+    },
     lat: zone.center.coordinates[1],
     lng: zone.center.coordinates[0],
     createdAt: zone.createdAt,

@@ -17,6 +17,7 @@ import { useAuth } from "@/context/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Zone } from "@/lib/quietzone-types";
 import { apiRequest, getUserFacingError } from "@/lib/api";
+import { getZoneScheduleSummary } from "@/lib/zone-schedule";
 
 export default function ZonesScreen() {
   const router = useRouter();
@@ -110,6 +111,9 @@ export default function ZonesScreen() {
                       <Text style={[styles.zoneTitle, { color: theme.text }]}>{zone.name}</Text>
                       <Text style={[styles.zoneMeta, { color: theme.muted }]}>
                         {zone.lat.toFixed(4)}, {zone.lng.toFixed(4)}
+                      </Text>
+                      <Text style={[styles.zoneMeta, { color: theme.muted }]}>
+                        {getZoneScheduleSummary(zone.schedule)}
                       </Text>
                     </View>
                   </View>
