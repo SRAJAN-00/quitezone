@@ -33,6 +33,13 @@ export type EventItem = {
   modeApplied: string;
   previousMode: string;
   triggeredAt: string;
+  metadata?: {
+    source?: string;
+    ringerApplied?: boolean;
+    blocked?: boolean;
+    reason?: string | null;
+    [key: string]: unknown;
+  };
   createdAt?: string;
 };
 

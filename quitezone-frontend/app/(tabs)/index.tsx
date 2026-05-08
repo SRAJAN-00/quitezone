@@ -1,3 +1,4 @@
+import * as Location from "expo-location";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -19,6 +20,7 @@ import { useAuth } from "@/context/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { EventItem, Zone } from "@/lib/quietzone-types";
 import { apiRequest, getUserFacingError } from "@/lib/api";
+import { loadOnboardingDismissed, saveOnboardingDismissed } from "@/lib/onboarding-storage";
 import { getSilentAutomationOverview, startSilentAutomationMonitoring } from "@/lib/silent-automation/geofence-runtime";
 import { requestSilentAutomationAccess } from "@/lib/silent-automation/native";
 
@@ -32,6 +34,8 @@ export default function HomeScreen() {
   const [error, setError] = useState("");
   const [automationBusy, setAutomationBusy] = useState(false);
   const [automationMessage, setAutomationMessage] = useState("");
+  const [locationReady, setLocationReady] = useState(false);
+  const [setupDismissed, setSetupDismissed] = useState(false);
   const [automationInfo, setAutomationInfo] = useState<{
     canControlRinger: boolean;
     monitoringActive: boolean;
@@ -104,6 +108,37 @@ export default function HomeScreen() {
     }, [])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      async function loadSetupState() {
+        if (!user?.id) {
+          return;
+        }
+
+        const [foreground, background, dismissed] = await Promise.all([
+          Location.getForegroundPermissionsAsync(),
+          Location.getBackgroundPermissionsAsync(),
+          loadOnboardingDismissed(user.id),
+        ]);
+
+        if (!active) {
+          return;
+        }
+
+        setLocationReady(foreground.status === "granted" && background.status === "granted");
+        setSetupDismissed(dismissed);
+      }
+
+      void loadSetupState();
+
+      return () => {
+        active = false;
+      };
+    }, [user?.id])
+  );
+
   async function handleAutomationSetup() {
     setAutomationBusy(true);
     setAutomationMessage("");
@@ -133,8 +168,63 @@ export default function HomeScreen() {
     }
   }
 
+  async function handleLocationSetup() {
+    const foreground = await Location.requestForegroundPermissionsAsync();
+    const background = await Location.requestBackgroundPermissionsAsync();
+    setLocationReady(foreground.status === "granted" && background.status === "granted");
+  }
+
+  async function dismissSetupChecklist() {
+    if (!user?.id) {
+      return;
+    }
+
+    await saveOnboardingDismissed(user.id, true);
+    setSetupDismissed(true);
+  }
+
+  async function restoreSetupChecklist() {
+    if (!user?.id) {
+      return;
+    }
+
+    await saveOnboardingDismissed(user.id, false);
+    setSetupDismissed(false);
+  }
+
   const activeZones = zones.filter((zone) => zone.isActive);
   const latestEvent = events[0];
+  const setupItems = [
+    {
+      key: "location",
+      done: locationReady,
+      title: "Allow location access",
+      description: "QuietZone needs foreground and background location to react when you arrive.",
+      actionLabel: "Enable location",
+      onPress: () => void handleLocationSetup(),
+      busy: false,
+    },
+    {
+      key: "automation",
+      done: Boolean(automationInfo?.canControlRinger && automationInfo?.monitoringActive),
+      title: "Finish automation setup",
+      description: "Grant Android policy access so the phone can switch to silent or vibrate in a zone.",
+      actionLabel: "Setup automation",
+      onPress: () => void handleAutomationSetup(),
+      busy: automationBusy,
+    },
+    {
+      key: "zone",
+      done: zones.length > 0,
+      title: "Create your first zone",
+      description: "Place one real-world space on the map so QuietZone has something to monitor.",
+      actionLabel: "Create zone",
+      onPress: () => router.push("/zone-editor"),
+      busy: false,
+    },
+  ];
+  const setupCompletedCount = setupItems.filter((item) => item.done).length;
+  const showSetupChecklist = !setupDismissed && setupCompletedCount < setupItems.length;
 
   return (
     <QuietScreen theme={theme}>
@@ -150,8 +240,69 @@ export default function HomeScreen() {
             theme={theme}
           />
           <QuietPill label={`${events.length} recent events`} theme={theme} />
+          {showSetupChecklist ? (
+            <QuietPill label={`${setupCompletedCount}/${setupItems.length} setup steps`} muted theme={theme} />
+          ) : null}
         </View>
       </QuietHero>
+
+      {showSetupChecklist ? (
+        <View style={styles.section}>
+          <QuietSectionHeader
+            subtitle="Finish these once so the app can automate reliably in the background."
+            theme={theme}
+            title="Getting Started"
+          />
+          <QuietCard theme={theme}>
+            {setupItems.map((item) => (
+              <View key={item.key} style={styles.setupItem}>
+                <View style={styles.setupCopy}>
+                  <Text style={[styles.statLabel, { color: theme.text }]}>
+                    {item.done ? "Done" : "Next"}: {item.title}
+                  </Text>
+                  <Text style={[styles.statNote, { color: theme.muted }]}>
+                    {item.description}
+                  </Text>
+                </View>
+                {item.done ? (
+                  <QuietPill label="Ready" theme={theme} />
+                ) : (
+                  <QuietSecondaryButton
+                    busy={item.busy}
+                    disabled={item.busy}
+                    label={item.actionLabel}
+                    onPress={item.onPress}
+                    theme={theme}
+                  />
+                )}
+              </View>
+            ))}
+            <QuietSecondaryButton
+              label="Dismiss checklist"
+              onPress={() => void dismissSetupChecklist()}
+              theme={theme}
+            />
+          </QuietCard>
+        </View>
+      ) : setupCompletedCount < setupItems.length ? (
+        <View style={styles.section}>
+          <QuietSectionHeader
+            subtitle="Bring the setup guide back if you want the app to walk you through the remaining steps."
+            theme={theme}
+            title="Setup Guide"
+          />
+          <QuietCard theme={theme}>
+            <Text style={[styles.statNote, { color: theme.muted }]}>
+              You can restore the getting-started checklist anytime from here.
+            </Text>
+            <QuietSecondaryButton
+              label="Show checklist again"
+              onPress={() => void restoreSetupChecklist()}
+              theme={theme}
+            />
+          </QuietCard>
+        </View>
+      ) : null}
 
       <View style={styles.section}>
         <QuietSectionHeader
@@ -394,6 +545,12 @@ const styles = StyleSheet.create({
   accountCopy: {
     flex: 1,
     gap: 4,
+  },
+  setupItem: {
+    gap: 12,
+  },
+  setupCopy: {
+    gap: 6,
   },
   accountTitle: {
     fontSize: 18,

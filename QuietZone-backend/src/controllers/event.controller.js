@@ -82,6 +82,7 @@ async function createTransitionEvent(req, res, next) {
         modeApplied: event.modeApplied,
         previousMode: event.previousMode,
         triggeredAt: event.triggeredAt,
+        metadata,
         createdAt: event.createdAt,
       },
       push: pushResult,
@@ -94,7 +95,17 @@ async function createTransitionEvent(req, res, next) {
 async function listEvents(req, res, next) {
   try {
     const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 100);
-    const events = await GeofenceEvent.find({ userId: req.auth.userId })
+    const query = { userId: req.auth.userId };
+
+    if (req.query.zoneId) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.zoneId)) {
+        throw new HttpError(400, "Invalid zoneId", "VALIDATION_ERROR");
+      }
+
+      query.zoneId = req.query.zoneId;
+    }
+
+    const events = await GeofenceEvent.find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
@@ -107,6 +118,7 @@ async function listEvents(req, res, next) {
         modeApplied: event.modeApplied,
         previousMode: event.previousMode,
         triggeredAt: event.triggeredAt,
+        metadata: event.metadata || {},
         createdAt: event.createdAt,
       })),
     });

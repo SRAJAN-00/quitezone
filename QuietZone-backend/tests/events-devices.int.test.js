@@ -39,12 +39,68 @@ describe("Events & Devices API", () => {
     expect(eventRes.statusCode).toBe(201);
     expect(eventRes.body.event.transition).toBe("enter");
     expect(eventRes.body.event.zoneName).toBe("Main Library");
+    expect(eventRes.body.event.metadata).toEqual({ source: "test" });
 
     const listRes = await request(app)
       .get("/api/events?limit=1")
       .set("Authorization", `Bearer ${token}`);
     expect(listRes.statusCode).toBe(200);
     expect(listRes.body.events.length).toBe(1);
+    expect(listRes.body.events[0].metadata).toEqual({ source: "test" });
+  });
+
+  it("filters events by zone id", async () => {
+    const token = await registerAndLogin(app, "events-filter@example.com");
+    const firstZoneRes = await request(app)
+      .post("/api/zones")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Studio",
+        lat: 12.91,
+        lng: 74.85,
+        radiusMeters: 100,
+        targetMode: "silent",
+      });
+    const secondZoneRes = await request(app)
+      .post("/api/zones")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Office",
+        lat: 12.92,
+        lng: 74.86,
+        radiusMeters: 120,
+        targetMode: "vibrate",
+      });
+
+    await request(app)
+      .post("/api/events/geofence-transition")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        transition: "enter",
+        zoneId: firstZoneRes.body.zone.id,
+        modeApplied: "silent",
+        previousMode: "normal",
+        metadata: { source: "test-a" },
+      });
+
+    await request(app)
+      .post("/api/events/geofence-transition")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        transition: "enter",
+        zoneId: secondZoneRes.body.zone.id,
+        modeApplied: "vibrate",
+        previousMode: "normal",
+        metadata: { source: "test-b" },
+      });
+
+    const filteredRes = await request(app)
+      .get(`/api/events?limit=10&zoneId=${firstZoneRes.body.zone.id}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(filteredRes.statusCode).toBe(200);
+    expect(filteredRes.body.events).toHaveLength(1);
+    expect(filteredRes.body.events[0].zoneName).toBe("Studio");
   });
 
   it("rejects invalid event payload metadata", async () => {
