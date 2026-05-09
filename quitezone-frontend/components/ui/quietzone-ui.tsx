@@ -248,10 +248,10 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     padding: Spacing.lg,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   sectionHeader: {
     alignItems: "center",
@@ -265,8 +265,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   sectionTitle: {
-    fontSize: 22,
-    fontWeight: "800",
+    fontSize: 20,
+    fontWeight: "600",
     letterSpacing: -0.5,
   },
   sectionSubtitle: {
@@ -275,26 +275,26 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: "center",
-    borderRadius: Radius.pill,
+    borderRadius: Radius.md,
     justifyContent: "center",
-    minHeight: 56,
+    minHeight: 48,
     paddingHorizontal: Spacing.md,
   },
   primaryButtonText: {
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 15,
+    fontWeight: "600",
   },
   secondaryButton: {
     alignItems: "center",
-    borderRadius: Radius.pill,
+    borderRadius: Radius.md,
     borderWidth: 1,
     justifyContent: "center",
-    minHeight: 56,
+    minHeight: 48,
     paddingHorizontal: Spacing.md,
   },
   secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 15,
+    fontWeight: "500",
   },
   inputWrap: {
     gap: 8,
@@ -308,8 +308,8 @@ const styles = StyleSheet.create({
   input: {
     borderRadius: Radius.md,
     borderWidth: 1,
-    fontSize: 16,
-    minHeight: 54,
+    fontSize: 15,
+    minHeight: 48,
     paddingHorizontal: Spacing.md,
   },
   inputMessage: {
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   pillLabel: {
-    fontSize: 13,
-    fontWeight: "700",
+    fontSize: 12,
+    fontWeight: "600",
   },
 });

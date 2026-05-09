@@ -1,63 +1,63 @@
 import { Platform } from "react-native";
 
-const lightAccent = "#2F80ED";
-const darkAccent = "#4D9BFF";
+const lightAccent = "#09090B"; // zinc-950
+const darkAccent = "#FAFAFA"; // zinc-50
 
 export const Colors = {
   light: {
-    text: "#000000",
-    background: "#F2F4F7",
+    text: "#09090B",
+    background: "#FFFFFF",
     tint: lightAccent,
-    icon: "#666666",
-    tabIconDefault: "#999999",
+    icon: "#71717A", // zinc-500
+    tabIconDefault: "#A1A1AA", // zinc-400
     tabIconSelected: lightAccent,
-    page: "#F2F4F7",
-    pageAlt: "#E5E7EB",
+    page: "#FAFAFA", // zinc-50
+    pageAlt: "#F4F4F5", // zinc-100
     surface: "#FFFFFF",
     surfaceStrong: "#FFFFFF",
     panel: "#FFFFFF",
-    panelMuted: "#F9FAFB",
-    border: "#E5E7EB",
-    borderStrong: "#D1D5DB",
-    muted: "#6B7280",
-    mutedStrong: "#374151",
+    panelMuted: "#F4F4F5",
+    border: "#E4E4E7", // zinc-200
+    borderStrong: "#D4D4D8", // zinc-300
+    muted: "#71717A", // zinc-500
+    mutedStrong: "#3F3F46", // zinc-700
     accent: lightAccent,
-    accentSoft: "#E0EFFC", // very soft blue background
-    accentTextOn: "#FFFFFF",
-    success: "#10B981",
-    warning: "#F59E0B",
-    danger: "#EF4444",
-    input: "#F9FAFB",
-    placeholder: "#9CA3AF",
+    accentSoft: "#F4F4F5", // zinc-100
+    accentTextOn: "#FAFAFA",
+    success: "#10B981", // emerald-500
+    warning: "#F59E0B", // amber-500
+    danger: "#EF4444", // red-500
+    input: "#FFFFFF",
+    placeholder: "#A1A1AA", // zinc-400
     tabBar: "#FFFFFF",
     overlay: "rgba(0, 0, 0, 0.05)",
   },
   dark: {
-    text: "#FFFFFF",
-    background: "#000000",
+    text: "#FAFAFA",
+    background: "#09090B",
     tint: darkAccent,
-    icon: "#A1A1AA",
-    tabIconDefault: "#71717A",
+    icon: "#A1A1AA", // zinc-400
+    tabIconDefault: "#71717A", // zinc-500
     tabIconSelected: darkAccent,
-    page: "#000000",
-    pageAlt: "#09090B",
-    surface: "#18181B",
-    surfaceStrong: "#27272A",
-    panel: "#18181B",
-    panelMuted: "#09090B",
-    border: "#27272A",
-    borderStrong: "#3F3F46",
-    muted: "#A1A1AA",
-    mutedStrong: "#D4D4D8",
+    page: "#09090B",
+    pageAlt: "#18181B", // zinc-900
+    surface: "#09090B",
+    surfaceStrong: "#18181B",
+    panel: "#09090B",
+    panelMuted: "#18181B",
+    border: "#27272A", // zinc-800
+    borderStrong: "#3F3F46", // zinc-700
+    muted: "#A1A1AA", // zinc-400
+    mutedStrong: "#D4D4D8", // zinc-300
     accent: darkAccent,
-    accentSoft: "#192B4D",
-    accentTextOn: "#000000",
+    accentSoft: "#27272A", // zinc-800
+    accentTextOn: "#09090B",
     success: "#34D399",
     warning: "#FBBF24",
     danger: "#F87171",
-    input: "#27272A",
+    input: "#09090B",
     placeholder: "#71717A",
-    tabBar: "#000000",
+    tabBar: "#09090B",
     overlay: "rgba(0, 0, 0, 0.4)",
   },
 };
@@ -70,9 +70,9 @@ export function getTheme(colorScheme: ColorSchemeName | null | undefined) {
 }
 
 export const Radius = {
-  sm: 16,
-  md: 24,
-  lg: 32,
+  sm: 6,
+  md: 8,
+  lg: 12,
   pill: 999,
 };
 
