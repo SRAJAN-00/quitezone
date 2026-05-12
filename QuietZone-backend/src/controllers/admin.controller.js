@@ -30,6 +30,12 @@ function toZoneResponse(zone) {
       startTime: "09:00",
       endTime: "17:00",
     },
+    notifications: zone.notifications ?? {
+      enabled: true,
+      notifyOnEnter: true,
+      notifyOnExit: true,
+      onlyOnFailure: false,
+    },
     lat: zone.center.coordinates[1],
     lng: zone.center.coordinates[0],
     createdAt: zone.createdAt,
@@ -52,12 +58,100 @@ function toEventResponse(event) {
   };
 }
 
+function startOfUtcDay(date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function addUtcDays(date, days) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function formatUtcDayKey(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function createRecentDayBuckets(days) {
+  const today = startOfUtcDay(new Date());
+  const firstDay = addUtcDays(today, -(days - 1));
+
+  return Array.from({ length: days }, (_, index) => {
+    const date = addUtcDays(firstDay, index);
+    return {
+      key: formatUtcDayKey(date),
+      date,
+      label: date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      }),
+    };
+  });
+}
+
+function toCountMap(rows) {
+  return rows.reduce((map, row) => {
+    if (row && typeof row._id === "string") {
+      map.set(row._id, row.count);
+    }
+    return map;
+  }, new Map());
+}
+
+async function getRecentDailyCounts(Model, dateField, fromDate) {
+  const rows = await Model.aggregate([
+    {
+      $match: {
+        [dateField]: {
+          $gte: fromDate,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: "%Y-%m-%d",
+            date: `$${dateField}`,
+          },
+        },
+        count: { $sum: 1 },
+      },
+    },
+    {
+      $sort: { _id: 1 },
+    },
+  ]);
+
+  return toCountMap(rows);
+}
+
 async function getOverview(_req, res, next) {
   try {
-    const [userCount, zoneCount, eventCount, recentUsers, recentZones, recentEvents] = await Promise.all([
+    const dailyBuckets = createRecentDayBuckets(7);
+    const firstBucketDate = dailyBuckets[0].date;
+
+    const [
+      userCount,
+      zoneCount,
+      eventCount,
+      adminCount,
+      activeZoneCount,
+      enterEventCount,
+      recentUsers,
+      recentZones,
+      recentEvents,
+      userDailyCounts,
+      zoneDailyCounts,
+      eventDailyCounts,
+    ] = await Promise.all([
       User.countDocuments(),
       Zone.countDocuments(),
       GeofenceEvent.countDocuments(),
+      User.countDocuments({ role: "admin" }),
+      Zone.countDocuments({ isActive: true }),
+      GeofenceEvent.countDocuments({ transition: "enter" }),
       User.find().sort({ createdAt: -1 }).limit(5).lean(),
       Zone.find()
         .sort({ createdAt: -1 })
@@ -69,7 +163,32 @@ async function getOverview(_req, res, next) {
         .limit(10)
         .populate("userId", "email")
         .lean(),
+      getRecentDailyCounts(User, "createdAt", firstBucketDate),
+      getRecentDailyCounts(Zone, "createdAt", firstBucketDate),
+      getRecentDailyCounts(GeofenceEvent, "triggeredAt", firstBucketDate),
     ]);
+
+    const analytics = {
+      roleBreakdown: {
+        admin: adminCount,
+        user: Math.max(userCount - adminCount, 0),
+      },
+      zoneStatus: {
+        active: activeZoneCount,
+        paused: Math.max(zoneCount - activeZoneCount, 0),
+      },
+      eventTransitions: {
+        enter: enterEventCount,
+        exit: Math.max(eventCount - enterEventCount, 0),
+      },
+      recentDailyActivity: dailyBuckets.map((bucket) => ({
+        date: bucket.key,
+        label: bucket.label,
+        users: userDailyCounts.get(bucket.key) ?? 0,
+        zones: zoneDailyCounts.get(bucket.key) ?? 0,
+        events: eventDailyCounts.get(bucket.key) ?? 0,
+      })),
+    };
 
     res.json({
       counts: {
@@ -77,6 +196,7 @@ async function getOverview(_req, res, next) {
         zones: zoneCount,
         events: eventCount,
       },
+      analytics,
       recentUsers: recentUsers.map(toUserResponse),
       recentZones: recentZones.map(toZoneResponse),
       recentEvents: recentEvents.map(toEventResponse),

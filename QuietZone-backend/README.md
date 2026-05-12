@@ -25,6 +25,13 @@ Health checks:
 - `GET /health`
 - `GET /ready`
 
+## Auth-Protected API Routes
+
+The backend also exposes a feedback API for signed-in users:
+
+- `GET /api/feedback` - list the current user's feedback, or all feedback for admins
+- `POST /api/feedback` - submit a new feedback item with `rating` and `comment`
+
 ## Container Build
 
 ```bash

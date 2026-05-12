@@ -1,6 +1,8 @@
 const request = require("supertest");
 const { createApp } = require("../src/app");
+const GeofenceEvent = require("../src/models/GeofenceEvent");
 const User = require("../src/models/User");
+const Zone = require("../src/models/Zone");
 
 describe("Admin API", () => {
   const app = createApp();
@@ -32,10 +34,29 @@ describe("Admin API", () => {
       password: "password123",
       role: "admin",
     });
-    await createUser({
+    const member = await createUser({
       email: "member@example.com",
       password: "password123",
       role: "user",
+    });
+    const zone = await Zone.create({
+      ownerId: admin._id,
+      name: "Library",
+      center: {
+        type: "Point",
+        coordinates: [77.5946, 12.9716],
+      },
+      radiusMeters: 120,
+      targetMode: "silent",
+      isActive: true,
+    });
+    await GeofenceEvent.create({
+      userId: member._id,
+      zoneId: zone._id,
+      zoneName: zone.name,
+      transition: "enter",
+      modeApplied: "silent",
+      previousMode: "normal",
     });
 
     const loginRes = await request(app).post("/api/auth/login").send({
@@ -49,19 +70,39 @@ describe("Admin API", () => {
 
     expect(overviewRes.statusCode).toBe(200);
     expect(overviewRes.body.counts.users).toBe(2);
+    expect(overviewRes.body.counts.zones).toBe(1);
+    expect(overviewRes.body.counts.events).toBe(1);
     expect(overviewRes.body.recentUsers).toHaveLength(2);
+    expect(overviewRes.body.analytics.roleBreakdown).toEqual({
+      admin: 1,
+      user: 1,
+    });
+    expect(overviewRes.body.analytics.zoneStatus).toEqual({
+      active: 1,
+      paused: 0,
+    });
+    expect(overviewRes.body.analytics.eventTransitions).toEqual({
+      enter: 1,
+      exit: 0,
+    });
+    expect(overviewRes.body.analytics.recentDailyActivity).toHaveLength(7);
+    expect(
+      overviewRes.body.analytics.recentDailyActivity.some(
+        (day) => day.users > 0 || day.zones > 0 || day.events > 0
+      )
+    ).toBe(true);
 
     const usersRes = await request(app)
       .get("/api/admin/users")
       .set("Authorization", `Bearer ${loginRes.body.accessToken}`);
 
     expect(usersRes.statusCode).toBe(200);
-    const member = usersRes.body.users.find((user) => user.email === "member@example.com");
-    expect(member).toBeTruthy();
-    expect(member.role).toBe("user");
+    const listedMember = usersRes.body.users.find((user) => user.email === "member@example.com");
+    expect(listedMember).toBeTruthy();
+    expect(listedMember.role).toBe("user");
 
     const updateRes = await request(app)
-      .patch(`/api/admin/users/${member.id}/role`)
+      .patch(`/api/admin/users/${listedMember.id}/role`)
       .set("Authorization", `Bearer ${loginRes.body.accessToken}`)
       .send({ role: "admin" });
 

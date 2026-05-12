@@ -39,14 +39,18 @@ describe("Events & Devices API", () => {
     expect(eventRes.statusCode).toBe(201);
     expect(eventRes.body.event.transition).toBe("enter");
     expect(eventRes.body.event.zoneName).toBe("Main Library");
-    expect(eventRes.body.event.metadata).toEqual({ source: "test" });
+    expect(eventRes.body.event.metadata.source).toBe("test");
+    expect(eventRes.body.event.metadata.push).toBeDefined();
+    expect(eventRes.body.event.metadata.push.reason).toBe("No device tokens");
 
     const listRes = await request(app)
       .get("/api/events?limit=1")
       .set("Authorization", `Bearer ${token}`);
     expect(listRes.statusCode).toBe(200);
     expect(listRes.body.events.length).toBe(1);
-    expect(listRes.body.events[0].metadata).toEqual({ source: "test" });
+    expect(listRes.body.events[0].metadata.source).toBe("test");
+    expect(listRes.body.events[0].metadata.push).toBeDefined();
+    expect(listRes.body.events[0].metadata.push.reason).toBe("No device tokens");
   });
 
   it("filters events by zone id", async () => {
@@ -137,5 +141,39 @@ describe("Events & Devices API", () => {
       });
     expect(invalidRes.statusCode).toBe(400);
     expect(invalidRes.body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("skips push when zone is set to only notify on failures", async () => {
+    const token = await registerAndLogin(app, "events-push-rules@example.com");
+    const zoneRes = await request(app)
+      .post("/api/zones")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Reading Room",
+        lat: 12.91,
+        lng: 74.85,
+        radiusMeters: 100,
+        targetMode: "silent",
+        notifications: {
+          enabled: true,
+          notifyOnEnter: true,
+          notifyOnExit: true,
+          onlyOnFailure: true,
+        },
+      });
+
+    const eventRes = await request(app)
+      .post("/api/events/geofence-transition")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        transition: "enter",
+        zoneId: zoneRes.body.zone.id,
+        modeApplied: "silent",
+        previousMode: "normal",
+        metadata: { source: "test", blocked: false },
+      });
+
+    expect(eventRes.statusCode).toBe(201);
+    expect(eventRes.body.push.reason).toBe("Configured to notify only on failures");
   });
 });

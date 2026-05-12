@@ -24,7 +24,7 @@ async function upsertFcmToken(req, res, next) {
       },
       {
         upsert: true,
-        new: true,
+        returnDocument: "after",
       }
     );
 

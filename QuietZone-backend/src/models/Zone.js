@@ -45,6 +45,28 @@ const zoneScheduleSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const zoneNotificationSchema = new mongoose.Schema(
+  {
+    enabled: {
+      type: Boolean,
+      default: true,
+    },
+    notifyOnEnter: {
+      type: Boolean,
+      default: true,
+    },
+    notifyOnExit: {
+      type: Boolean,
+      default: true,
+    },
+    onlyOnFailure: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { _id: false }
+);
+
 const zoneSchema = new mongoose.Schema(
   {
     ownerId: {
@@ -105,6 +127,15 @@ const zoneSchema = new mongoose.Schema(
         daysOfWeek: [],
         startTime: "09:00",
         endTime: "17:00",
+      }),
+    },
+    notifications: {
+      type: zoneNotificationSchema,
+      default: () => ({
+        enabled: true,
+        notifyOnEnter: true,
+        notifyOnExit: true,
+        onlyOnFailure: false,
       }),
     },
   },

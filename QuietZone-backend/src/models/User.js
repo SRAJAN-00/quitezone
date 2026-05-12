@@ -1,6 +1,28 @@
 const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 
+const notificationDefaultsSchema = new mongoose.Schema(
+  {
+    enabled: {
+      type: Boolean,
+      default: true,
+    },
+    notifyOnEnter: {
+      type: Boolean,
+      default: true,
+    },
+    notifyOnExit: {
+      type: Boolean,
+      default: true,
+    },
+    onlyOnFailure: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     email: {
@@ -18,6 +40,15 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["user", "admin"],
       default: "user",
+    },
+    notificationDefaults: {
+      type: notificationDefaultsSchema,
+      default: () => ({
+        enabled: true,
+        notifyOnEnter: true,
+        notifyOnExit: true,
+        onlyOnFailure: false,
+      }),
     },
   },
   {

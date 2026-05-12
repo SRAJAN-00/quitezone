@@ -4,6 +4,7 @@ const zoneRoutes = require("./zone.routes");
 const deviceRoutes = require("./device.routes");
 const eventRoutes = require("./event.routes");
 const adminRoutes = require("./admin.routes");
+const feedbackRoutes = require("./feedback.routes");
 const { requireAuth, requireRole } = require("../middlewares/auth.middleware");
 const { getFirebaseStatus } = require("../config/firebase");
 const { isDatabaseReady } = require("../config/db");
@@ -46,6 +47,7 @@ router.use("/api/auth", authRoutes);
 router.use("/api/zones", requireAuth, zoneRoutes);
 router.use("/api/devices", requireAuth, deviceRoutes);
 router.use("/api/events", requireAuth, eventRoutes);
+router.use("/api/feedback", requireAuth, feedbackRoutes);
 router.use("/api/admin", requireAuth, requireRole(["admin"]), adminRoutes);
 
 module.exports = router;

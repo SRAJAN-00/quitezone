@@ -49,6 +49,33 @@ function normalizeZoneSchedule(schedule) {
   };
 }
 
+function normalizeZoneNotifications(notifications) {
+  if (!notifications || typeof notifications !== "object") {
+    return {
+      enabled: true,
+      notifyOnEnter: true,
+      notifyOnExit: true,
+      onlyOnFailure: false,
+    };
+  }
+
+  return {
+    enabled: notifications.enabled === undefined ? true : Boolean(notifications.enabled),
+    notifyOnEnter:
+      notifications.notifyOnEnter === undefined
+        ? true
+        : Boolean(notifications.notifyOnEnter),
+    notifyOnExit:
+      notifications.notifyOnExit === undefined
+        ? true
+        : Boolean(notifications.notifyOnExit),
+    onlyOnFailure:
+      notifications.onlyOnFailure === undefined
+        ? false
+        : Boolean(notifications.onlyOnFailure),
+  };
+}
+
 function normalizeZonePayload(payload) {
   const name = requireString(payload.name, "name", { min: 2, max: 120 });
   const lat = requireNumber(payload.lat, "lat", { min: -90, max: 90 });
@@ -57,6 +84,7 @@ function normalizeZonePayload(payload) {
   const targetMode = requireEnum(payload.targetMode, "targetMode", ["silent", "vibrate"]);
   const isActive = payload.isActive === undefined ? true : Boolean(payload.isActive);
   const schedule = normalizeZoneSchedule(payload.schedule);
+  const notifications = normalizeZoneNotifications(payload.notifications);
 
   return {
     name,
@@ -68,6 +96,7 @@ function normalizeZonePayload(payload) {
     targetMode,
     isActive,
     schedule,
+    notifications,
   };
 }
 
@@ -85,6 +114,12 @@ function mapZone(zone) {
       daysOfWeek: [],
       startTime: "09:00",
       endTime: "17:00",
+    },
+    notifications: zone.notifications ?? {
+      enabled: true,
+      notifyOnEnter: true,
+      notifyOnExit: true,
+      onlyOnFailure: false,
     },
     ownerId: zone.ownerId.toString(),
     createdAt: zone.createdAt,
@@ -134,6 +169,7 @@ async function updateZone(req, res, next) {
       targetMode: req.body.targetMode ?? current.targetMode,
       isActive: req.body.isActive ?? current.isActive,
       schedule: req.body.schedule ?? current.schedule,
+      notifications: req.body.notifications ?? current.notifications,
     };
     const normalized = normalizeZonePayload(mergedPayload);
 
@@ -143,6 +179,7 @@ async function updateZone(req, res, next) {
     current.targetMode = normalized.targetMode;
     current.isActive = normalized.isActive;
     current.schedule = normalized.schedule;
+    current.notifications = normalized.notifications;
     await current.save();
 
     res.json({ zone: mapZone(current) });

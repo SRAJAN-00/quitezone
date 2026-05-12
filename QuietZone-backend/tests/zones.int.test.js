@@ -89,6 +89,12 @@ describe("Zone API", () => {
       startTime: "09:00",
       endTime: "17:00",
     });
+    expect(createRes.body.zone.notifications).toEqual({
+      enabled: true,
+      notifyOnEnter: true,
+      notifyOnExit: true,
+      onlyOnFailure: false,
+    });
 
     const updateRes = await request(app)
       .patch(`/api/zones/${createRes.body.zone.id}`)
@@ -108,6 +114,61 @@ describe("Zone API", () => {
       daysOfWeek: [0, 6],
       startTime: "10:30",
       endTime: "14:00",
+    });
+    expect(updateRes.body.zone.notifications).toEqual({
+      enabled: true,
+      notifyOnEnter: true,
+      notifyOnExit: true,
+      onlyOnFailure: false,
+    });
+  });
+
+  it("saves zone notification preferences", async () => {
+    const token = await registerAndLogin(app, "zonenotify@example.com");
+
+    const createRes = await request(app)
+      .post("/api/zones")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Seminar Hall",
+        lat: 12.91,
+        lng: 74.85,
+        radiusMeters: 130,
+        targetMode: "silent",
+        notifications: {
+          enabled: true,
+          notifyOnEnter: false,
+          notifyOnExit: true,
+          onlyOnFailure: true,
+        },
+      });
+
+    expect(createRes.statusCode).toBe(201);
+    expect(createRes.body.zone.notifications).toEqual({
+      enabled: true,
+      notifyOnEnter: false,
+      notifyOnExit: true,
+      onlyOnFailure: true,
+    });
+
+    const updateRes = await request(app)
+      .patch(`/api/zones/${createRes.body.zone.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        notifications: {
+          enabled: false,
+          notifyOnEnter: false,
+          notifyOnExit: false,
+          onlyOnFailure: false,
+        },
+      });
+
+    expect(updateRes.statusCode).toBe(200);
+    expect(updateRes.body.zone.notifications).toEqual({
+      enabled: false,
+      notifyOnEnter: false,
+      notifyOnExit: false,
+      onlyOnFailure: false,
     });
   });
 

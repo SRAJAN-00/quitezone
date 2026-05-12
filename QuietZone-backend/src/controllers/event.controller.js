@@ -40,6 +40,7 @@ async function createTransitionEvent(req, res, next) {
 
     let zoneId = null;
     let zoneName = "";
+    let zoneNotifications = null;
 
     if (req.body.zoneId) {
       if (!mongoose.Types.ObjectId.isValid(req.body.zoneId)) {
@@ -51,6 +52,7 @@ async function createTransitionEvent(req, res, next) {
       }
       zoneId = zone._id;
       zoneName = zone.name;
+      zoneNotifications = zone.notifications ?? null;
     } else if (req.body.zoneName) {
       zoneName = requireString(req.body.zoneName, "zoneName", { min: 2, max: 120 });
     }
@@ -71,7 +73,15 @@ async function createTransitionEvent(req, res, next) {
       transition,
       zoneName,
       modeApplied,
+      blocked: Boolean(metadata.blocked),
+      notifications: zoneNotifications,
     });
+    const metadataWithPush = {
+      ...metadata,
+      push: pushResult,
+    };
+    event.metadata = metadataWithPush;
+    await event.save();
 
     res.status(201).json({
       event: {
@@ -82,7 +92,7 @@ async function createTransitionEvent(req, res, next) {
         modeApplied: event.modeApplied,
         previousMode: event.previousMode,
         triggeredAt: event.triggeredAt,
-        metadata,
+        metadata: metadataWithPush,
         createdAt: event.createdAt,
       },
       push: pushResult,

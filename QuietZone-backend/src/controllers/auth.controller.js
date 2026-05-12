@@ -7,11 +7,41 @@ const {
 const HttpError = require("../utils/httpError");
 const { requireEmail, requirePassword } = require("../utils/validation");
 
+const DEFAULT_NOTIFICATION_DEFAULTS = {
+  enabled: true,
+  notifyOnEnter: true,
+  notifyOnExit: true,
+  onlyOnFailure: false,
+};
+
+function normalizeNotificationDefaults(input) {
+  const source = input && typeof input === "object" ? input : {};
+  return {
+    enabled:
+      source.enabled === undefined
+        ? DEFAULT_NOTIFICATION_DEFAULTS.enabled
+        : Boolean(source.enabled),
+    notifyOnEnter:
+      source.notifyOnEnter === undefined
+        ? DEFAULT_NOTIFICATION_DEFAULTS.notifyOnEnter
+        : Boolean(source.notifyOnEnter),
+    notifyOnExit:
+      source.notifyOnExit === undefined
+        ? DEFAULT_NOTIFICATION_DEFAULTS.notifyOnExit
+        : Boolean(source.notifyOnExit),
+    onlyOnFailure:
+      source.onlyOnFailure === undefined
+        ? DEFAULT_NOTIFICATION_DEFAULTS.onlyOnFailure
+        : Boolean(source.onlyOnFailure),
+  };
+}
+
 function sanitizeUser(user) {
   return {
     id: user._id.toString(),
     email: user.email,
     role: user.role,
+    notificationDefaults: normalizeNotificationDefaults(user.notificationDefaults),
     createdAt: user.createdAt,
   };
 }
@@ -94,14 +124,70 @@ async function logout(req, res, next) {
   }
 }
 
-function me(req, res) {
-  res.json({
-    user: {
-      id: req.auth.userId,
-      email: req.auth.email,
-      role: req.auth.role,
-    },
-  });
+async function me(req, res, next) {
+  try {
+    const user = await User.findById(req.auth.userId);
+    if (!user) {
+      throw new HttpError(401, "User not found", "AUTH_USER_NOT_FOUND");
+    }
+
+    res.json({
+      user: sanitizeUser(user),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getPreferences(req, res, next) {
+  try {
+    const user = await User.findById(req.auth.userId);
+    if (!user) {
+      throw new HttpError(401, "User not found", "AUTH_USER_NOT_FOUND");
+    }
+
+    res.json({
+      notificationDefaults: normalizeNotificationDefaults(user.notificationDefaults),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updatePreferences(req, res, next) {
+  try {
+    const user = await User.findById(req.auth.userId);
+    if (!user) {
+      throw new HttpError(401, "User not found", "AUTH_USER_NOT_FOUND");
+    }
+
+    if (
+      req.body?.notificationDefaults !== undefined &&
+      (!req.body.notificationDefaults ||
+        Array.isArray(req.body.notificationDefaults) ||
+        typeof req.body.notificationDefaults !== "object")
+    ) {
+      throw new HttpError(
+        400,
+        "notificationDefaults must be an object",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    const incoming = req.body?.notificationDefaults || {};
+    const merged = {
+      ...normalizeNotificationDefaults(user.notificationDefaults),
+      ...incoming,
+    };
+    user.notificationDefaults = normalizeNotificationDefaults(merged);
+    await user.save();
+
+    res.json({
+      notificationDefaults: normalizeNotificationDefaults(user.notificationDefaults),
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 module.exports = {
@@ -110,4 +196,6 @@ module.exports = {
   refresh,
   logout,
   me,
+  getPreferences,
+  updatePreferences,
 };

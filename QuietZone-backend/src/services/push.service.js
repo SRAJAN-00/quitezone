@@ -1,7 +1,39 @@
 const DeviceToken = require("../models/DeviceToken");
 const { getFirebaseMessaging, getFirebaseStatus } = require("../config/firebase");
 
-async function sendTransitionPush({ userId, transition, zoneName, modeApplied }) {
+function shouldSendPush(transition, notifications, blocked) {
+  const settings = notifications || {
+    enabled: true,
+    notifyOnEnter: true,
+    notifyOnExit: true,
+    onlyOnFailure: false,
+  };
+
+  if (!settings.enabled) {
+    return { allowed: false, reason: "Notifications disabled for this zone" };
+  }
+
+  if (transition === "enter" && !settings.notifyOnEnter) {
+    return { allowed: false, reason: "Enter notifications disabled for this zone" };
+  }
+
+  if (transition === "exit" && !settings.notifyOnExit) {
+    return { allowed: false, reason: "Exit notifications disabled for this zone" };
+  }
+
+  if (settings.onlyOnFailure && !blocked) {
+    return { allowed: false, reason: "Configured to notify only on failures" };
+  }
+
+  return { allowed: true };
+}
+
+async function sendTransitionPush({ userId, transition, zoneName, modeApplied, blocked, notifications }) {
+  const policy = shouldSendPush(transition, notifications, blocked);
+  if (!policy.allowed) {
+    return { sent: 0, failed: 0, reason: policy.reason };
+  }
+
   const devices = await DeviceToken.find({ userId, isActive: true }).lean();
   if (devices.length === 0) {
     return { sent: 0, failed: 0, reason: "No device tokens" };
@@ -27,6 +59,7 @@ async function sendTransitionPush({ userId, transition, zoneName, modeApplied })
       transition,
       zoneName: zoneName || "",
       modeApplied: modeApplied || "unknown",
+      blocked: blocked ? "true" : "false",
       sentAt: new Date().toISOString(),
     },
     android: {

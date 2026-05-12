@@ -13,6 +13,12 @@ describe("Auth API", () => {
     expect(registerRes.statusCode).toBe(201);
     expect(registerRes.body.user.email).toBe("user1@example.com");
     expect(registerRes.body.user.role).toBe("user");
+    expect(registerRes.body.user.notificationDefaults).toEqual({
+      enabled: true,
+      notifyOnEnter: true,
+      notifyOnExit: true,
+      onlyOnFailure: false,
+    });
     expect(registerRes.body.accessToken).toBeTruthy();
     expect(registerRes.body.refreshToken).toBeTruthy();
 
@@ -23,6 +29,12 @@ describe("Auth API", () => {
 
     expect(loginRes.statusCode).toBe(200);
     expect(loginRes.body.user.email).toBe("user1@example.com");
+    expect(loginRes.body.user.notificationDefaults).toEqual({
+      enabled: true,
+      notifyOnEnter: true,
+      notifyOnExit: true,
+      onlyOnFailure: false,
+    });
   });
 
   it("refreshes and logs out", async () => {
@@ -65,5 +77,73 @@ describe("Auth API", () => {
     });
     expect(invalidLoginRes.statusCode).toBe(401);
     expect(invalidLoginRes.body.code).toBe("AUTH_INVALID_CREDENTIALS");
+  });
+
+  it("gets and updates notification preferences", async () => {
+    const registerRes = await request(app).post("/api/auth/register").send({
+      email: "prefs@example.com",
+      password: "password123",
+    });
+    const token = registerRes.body.accessToken;
+
+    const getRes = await request(app)
+      .get("/api/auth/preferences")
+      .set("Authorization", `Bearer ${token}`);
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.body.notificationDefaults).toEqual({
+      enabled: true,
+      notifyOnEnter: true,
+      notifyOnExit: true,
+      onlyOnFailure: false,
+    });
+
+    const patchRes = await request(app)
+      .patch("/api/auth/preferences")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        notificationDefaults: {
+          notifyOnEnter: false,
+          onlyOnFailure: true,
+        },
+      });
+    expect(patchRes.statusCode).toBe(200);
+    expect(patchRes.body.notificationDefaults).toEqual({
+      enabled: true,
+      notifyOnEnter: false,
+      notifyOnExit: true,
+      onlyOnFailure: true,
+    });
+
+    const meRes = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${token}`);
+    expect(meRes.statusCode).toBe(200);
+    expect(meRes.body.user.notificationDefaults).toEqual({
+      enabled: true,
+      notifyOnEnter: false,
+      notifyOnExit: true,
+      onlyOnFailure: true,
+    });
+  });
+
+  it("rejects unauthenticated and invalid preferences updates", async () => {
+    const unauthRes = await request(app).get("/api/auth/preferences");
+    expect(unauthRes.statusCode).toBe(401);
+    expect(unauthRes.body.code).toBe("AUTH_TOKEN_MISSING");
+
+    const registerRes = await request(app).post("/api/auth/register").send({
+      email: "prefs-invalid@example.com",
+      password: "password123",
+    });
+    const token = registerRes.body.accessToken;
+
+    const invalidRes = await request(app)
+      .patch("/api/auth/preferences")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        notificationDefaults: "invalid",
+      });
+    expect(invalidRes.statusCode).toBe(400);
+    expect(invalidRes.body.code).toBe("VALIDATION_ERROR");
   });
 });
