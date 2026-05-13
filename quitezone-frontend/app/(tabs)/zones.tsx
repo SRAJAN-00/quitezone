@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -19,6 +19,43 @@ import { Zone } from "@/lib/quietzone-types";
 import { apiRequest, getUserFacingError } from "@/lib/api";
 import { getZoneScheduleSummary } from "@/lib/zone-schedule";
 
+const REFRESH_TTL_MS = 15000;
+const DEFAULT_NOTIFICATIONS = {
+  enabled: true,
+  notifyOnEnter: true,
+  notifyOnExit: true,
+  onlyOnFailure: false,
+};
+
+function getNotificationBadgeLabels(zone: Zone) {
+  const notifications = {
+    ...DEFAULT_NOTIFICATIONS,
+    ...(zone.notifications || {}),
+  };
+
+  if (!notifications.enabled) {
+    return ["Alerts off"];
+  }
+
+  if (notifications.onlyOnFailure) {
+    return ["Failures only"];
+  }
+
+  if (notifications.notifyOnEnter && notifications.notifyOnExit) {
+    return ["Enter + Exit alerts"];
+  }
+
+  if (notifications.notifyOnEnter) {
+    return ["Enter alerts"];
+  }
+
+  if (notifications.notifyOnExit) {
+    return ["Exit alerts"];
+  }
+
+  return ["Alerts off"];
+}
+
 export default function ZonesScreen() {
   const router = useRouter();
   const theme = getTheme(useColorScheme());
@@ -26,10 +63,15 @@ export default function ZonesScreen() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const lastLoadedAtRef = useRef(0);
   const activeCount = zones.filter((zone) => zone.isActive).length;
 
-  const loadZones = useCallback(async () => {
+  const loadZones = useCallback(async (force = false) => {
     if (!accessToken) {
+      return;
+    }
+
+    if (!force && zones.length > 0 && Date.now() - lastLoadedAtRef.current < REFRESH_TTL_MS) {
       return;
     }
 
@@ -41,12 +83,13 @@ export default function ZonesScreen() {
         token: accessToken,
       });
       setZones(response.zones);
+      lastLoadedAtRef.current = Date.now();
     } catch (nextError) {
       setError(getUserFacingError(nextError));
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, zones.length]);
 
   useFocusEffect(
     useCallback(() => {
@@ -57,24 +100,33 @@ export default function ZonesScreen() {
   return (
     <QuietScreen theme={theme}>
       <View style={styles.header}>
-        <QuietSectionHeader
-          action={<QuietPrimaryButton label="New zone" onPress={() => router.push("/zone-editor")} theme={theme} />}
-          subtitle="Create, review, and edit the spaces where QuietZone should take over."
-          theme={theme}
-          title="Zones"
-        />
-
-        {!loading && !error && zones.length > 0 ? (
-          <View style={styles.summaryRow}>
-            <QuietPill label={`${zones.length} total`} theme={theme} />
-            <QuietPill label={`${activeCount} active`} theme={theme} />
-            <QuietPill
-              label={`${zones.filter((zone) => zone.targetMode === "silent").length} silent`}
-              muted
-              theme={theme}
-            />
+        <View style={[styles.heroPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <QuietSectionHeader
+            subtitle="Create, review, and edit the spaces where QuietZone should take over."
+            theme={theme}
+            title="Zones"
+          />
+          <View style={styles.heroActions}>
+            <View style={styles.heroPrimaryAction}>
+              <QuietPrimaryButton label="Create zone" onPress={() => router.push("/zone-editor")} theme={theme} />
+            </View>
+            <Text style={[styles.heroHint, { color: theme.mutedStrong }]}>
+              You should never need to hunt for the create action.
+            </Text>
           </View>
-        ) : null}
+
+          {!loading && !error && zones.length > 0 ? (
+            <View style={styles.summaryRow}>
+              <QuietPill label={`${zones.length} total`} theme={theme} />
+              <QuietPill label={`${activeCount} active`} theme={theme} />
+              <QuietPill
+                label={`${zones.filter((zone) => zone.targetMode === "silent").length} silent`}
+                muted
+                theme={theme}
+              />
+            </View>
+          ) : null}
+        </View>
       </View>
 
       <View style={styles.content}>
@@ -82,7 +134,7 @@ export default function ZonesScreen() {
           <QuietLoadingCard label="Loading your zone library..." theme={theme} />
         ) : error ? (
           <QuietStateCard
-            action={<QuietPrimaryButton label="Retry" onPress={() => void loadZones()} theme={theme} />}
+            action={<QuietPrimaryButton label="Retry" onPress={() => void loadZones(true)} theme={theme} />}
             description={error}
             theme={theme}
             title="Could not load zones"
@@ -123,6 +175,11 @@ export default function ZonesScreen() {
                     <QuietPill label={zone.targetMode} theme={theme} />
                     <QuietPill label={zone.isActive ? "Active" : "Paused"} muted theme={theme} />
                   </View>
+                  <View style={styles.pills}>
+                    {getNotificationBadgeLabels(zone).map((label) => (
+                      <QuietPill key={`${zone.id}-${label}`} label={label} muted theme={theme} />
+                    ))}
+                  </View>
 
                   <View style={styles.footerRow}>
                     <Text style={[styles.footerLabel, { color: theme.muted }]}>Tap to edit zone details</Text>
@@ -142,6 +199,23 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 16,
+  },
+  heroPanel: {
+    borderRadius: 24,
+    borderWidth: 1,
+    gap: 8,
+    padding: 18,
+  },
+  heroActions: {
+    gap: 8,
+  },
+  heroPrimaryAction: {
+    maxWidth: 180,
+  },
+  heroHint: {
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
   },
   summaryRow: {
     flexDirection: "row",

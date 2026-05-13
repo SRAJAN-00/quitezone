@@ -3,14 +3,18 @@ import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
+  TextInput,
   Switch,
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { QuietLoadingCard, QuietPrimaryButton, QuietScreen, QuietSecondaryButton, QuietInput, QuietBanner } from "@/components/ui/quietzone-ui";
+import { QuietBanner, QuietInput, QuietLoadingCard, QuietPrimaryButton, QuietSecondaryButton } from "@/components/ui/quietzone-ui";
 import { ZoneMap } from "@/components/ui/zone-map-view";
 import { getTheme } from "@/constants/theme";
 import { useAuth } from "@/context/auth-context";
@@ -22,6 +26,7 @@ import {
   normalizeZoneSchedule,
   validateZoneSchedule,
 } from "@/lib/zone-schedule";
+import { syncGeofencesFromApi } from "@/lib/silent-automation/geofence-runtime";
 
 const FALLBACK_REGION = {
   latitude: 12.9716,
@@ -29,6 +34,7 @@ const FALLBACK_REGION = {
   latitudeDelta: 0.02,
   longitudeDelta: 0.02,
 };
+const MAX_LAST_KNOWN_AGE_MS = 5 * 60 * 1000;
 
 const RADIUS_PRESETS = [50, 100, 150, 250, 400];
 const DAYS = [
@@ -40,13 +46,19 @@ const DAYS = [
   { label: "Fri", value: 5 },
   { label: "Sat", value: 6 },
 ];
+const DEFAULT_NOTIFICATION_SETTINGS = {
+  enabled: true,
+  notifyOnEnter: true,
+  notifyOnExit: true,
+  onlyOnFailure: false,
+};
 
 export default function ZoneEditorScreen() {
   const theme = getTheme(useColorScheme());
   const { id } = useLocalSearchParams<{ id?: string }>();
   const zoneId = typeof id === "string" ? id : undefined;
   const isEdit = Boolean(zoneId);
-  const { accessToken, isAuthenticated, isHydrating } = useAuth();
+  const { accessToken, isAuthenticated, isHydrating, user } = useAuth();
 
   const [name, setName] = useState("");
   const [radiusMeters, setRadiusMeters] = useState(100);
@@ -56,6 +68,10 @@ export default function ZoneEditorScreen() {
   const [scheduleDays, setScheduleDays] = useState<number[]>([...DEFAULT_ZONE_SCHEDULE.daysOfWeek]);
   const [scheduleStartTime, setScheduleStartTime] = useState(DEFAULT_ZONE_SCHEDULE.startTime);
   const [scheduleEndTime, setScheduleEndTime] = useState(DEFAULT_ZONE_SCHEDULE.endTime);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(DEFAULT_NOTIFICATION_SETTINGS.enabled);
+  const [notifyOnEnter, setNotifyOnEnter] = useState(DEFAULT_NOTIFICATION_SETTINGS.notifyOnEnter);
+  const [notifyOnExit, setNotifyOnExit] = useState(DEFAULT_NOTIFICATION_SETTINGS.notifyOnExit);
+  const [notifyOnlyOnFailure, setNotifyOnlyOnFailure] = useState(DEFAULT_NOTIFICATION_SETTINGS.onlyOnFailure);
   const [coordinate, setCoordinate] = useState({
     latitude: FALLBACK_REGION.latitude,
     longitude: FALLBACK_REGION.longitude,
@@ -66,6 +82,9 @@ export default function ZoneEditorScreen() {
   const [locationMessage, setLocationMessage] = useState("");
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [nameInputFocused, setNameInputFocused] = useState(false);
+  const [mapFullScreenVisible, setMapFullScreenVisible] = useState(false);
+  const [mapInteracting, setMapInteracting] = useState(false);
 
   const region = useMemo(
     () => ({
@@ -111,13 +130,30 @@ export default function ZoneEditorScreen() {
           setScheduleDays(currentSchedule.daysOfWeek);
           setScheduleStartTime(currentSchedule.startTime);
           setScheduleEndTime(currentSchedule.endTime);
+          const currentNotifications = {
+            ...DEFAULT_NOTIFICATION_SETTINGS,
+            ...(current.notifications || {}),
+          };
+          setNotificationsEnabled(currentNotifications.enabled);
+          setNotifyOnEnter(currentNotifications.notifyOnEnter);
+          setNotifyOnExit(currentNotifications.notifyOnExit);
+          setNotifyOnlyOnFailure(currentNotifications.onlyOnFailure);
           setCoordinate({
             latitude: current.lat,
             longitude: current.lng,
           });
+        } else {
+          const nextDefaults = {
+            ...DEFAULT_NOTIFICATION_SETTINGS,
+            ...(user?.notificationDefaults || {}),
+          };
+          setNotificationsEnabled(nextDefaults.enabled);
+          setNotifyOnEnter(nextDefaults.notifyOnEnter);
+          setNotifyOnExit(nextDefaults.notifyOnExit);
+          setNotifyOnlyOnFailure(nextDefaults.onlyOnFailure);
         }
 
-        const permission = await Location.requestForegroundPermissionsAsync();
+        const permission = await Location.getForegroundPermissionsAsync();
         if (!active) {
           return;
         }
@@ -127,12 +163,28 @@ export default function ZoneEditorScreen() {
           return;
         }
 
-        const position = await Location.getCurrentPositionAsync({});
+        const lastKnownPosition = await Location.getLastKnownPositionAsync();
+        const lastKnownIsFresh =
+          Boolean(lastKnownPosition?.timestamp) &&
+          Date.now() - Number(lastKnownPosition?.timestamp) <= MAX_LAST_KNOWN_AGE_MS;
+        const position = lastKnownIsFresh
+          ? lastKnownPosition
+          : await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
         if (!active) {
           return;
         }
+        if (!position) {
+          setLocationMessage("Could not read a recent device location, so QuietZone is using the fallback map region.");
+          return;
+        }
 
-        setLocationMessage("Map centered near your current location.");
+        setLocationMessage(
+          lastKnownIsFresh
+            ? "Map centered using a recent device location."
+            : "Map centered using your live device location."
+        );
         if (!isEdit) {
           setCoordinate({
             latitude: position.coords.latitude,
@@ -157,7 +209,50 @@ export default function ZoneEditorScreen() {
     return () => {
       active = false;
     };
-  }, [accessToken, isEdit, zoneId, reloadKey]);
+  }, [accessToken, isEdit, zoneId, reloadKey, user?.notificationDefaults]);
+
+  async function centerMapOnCurrentLocation() {
+    try {
+      setError("");
+      let permission = await Location.getForegroundPermissionsAsync();
+
+      if (permission.status !== "granted") {
+        permission = await Location.requestForegroundPermissionsAsync();
+      }
+
+      if (permission.status !== "granted") {
+        setLocationMessage("Location permission is required to use your current location.");
+        return;
+      }
+
+      const lastKnownPosition = await Location.getLastKnownPositionAsync();
+      const lastKnownIsFresh =
+        Boolean(lastKnownPosition?.timestamp) &&
+        Date.now() - Number(lastKnownPosition?.timestamp) <= MAX_LAST_KNOWN_AGE_MS;
+      const position = lastKnownIsFresh
+        ? lastKnownPosition
+        : await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+
+      if (!position) {
+        setLocationMessage("Could not fetch your current location. Try again in an open area.");
+        return;
+      }
+
+      setCoordinate({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      });
+      setLocationMessage(
+        lastKnownIsFresh
+          ? "Map centered to your recent current location."
+          : "Map centered to your live current location."
+      );
+    } catch (nextError) {
+      setError(getUserFacingError(nextError));
+    }
+  }
 
   if (isHydrating) {
     return <QuietLoadingCard label="Opening editor..." theme={theme} />;
@@ -212,6 +307,12 @@ export default function ZoneEditorScreen() {
         targetMode,
         isActive,
         schedule,
+        notifications: {
+          enabled: notificationsEnabled,
+          notifyOnEnter,
+          notifyOnExit,
+          onlyOnFailure: notifyOnlyOnFailure,
+        },
       };
 
       if (isEdit && zoneId) {
@@ -227,6 +328,9 @@ export default function ZoneEditorScreen() {
           token: accessToken,
         });
       }
+
+      // Sync geofences immediately so new zone activates if user is inside
+      await syncGeofencesFromApi(accessToken);
 
       router.back();
     } catch (nextError) {
@@ -262,6 +366,10 @@ export default function ZoneEditorScreen() {
         method: "DELETE",
         token: accessToken,
       });
+
+      // Sync geofences immediately so device returns to normal if it was in the deleted zone
+      await syncGeofencesFromApi(accessToken);
+
       router.back();
     } catch (nextError) {
       setError(getUserFacingError(nextError));
@@ -277,45 +385,84 @@ export default function ZoneEditorScreen() {
   }
 
   return (
-    <QuietScreen theme={theme}>
-      <View style={styles.header}>
-        <Text style={[styles.eyebrow, { color: theme.mutedStrong }]}>{isEdit ? "Edit zone" : "Create zone"}</Text>
-        <Text style={[styles.title, { color: theme.text }]}>
-          {isEdit ? "Adjust your quiet boundary." : "Place a new quiet boundary."}
-        </Text>
-        <Text style={[styles.subtitle, { color: theme.muted }]}>
-          Tap the map to place the zone center, choose the sound behavior, and save it into your QuietZone library.
-        </Text>
-      </View>
+    <SafeAreaView style={[styles.screen, { backgroundColor: theme.page }]} edges={["top", "left", "right", "bottom"]}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { backgroundColor: theme.page }]}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={!mapInteracting}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={[styles.eyebrow, { color: theme.mutedStrong }]}>{isEdit ? "Edit zone" : "Create zone"}</Text>
+          <Text style={[styles.title, { color: theme.text }]}>
+            {isEdit ? "Adjust your quiet boundary." : "Place a new quiet boundary."}
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.muted }]}>
+            Drop the pin, choose the phone behavior, and save whenever you are ready. The save action stays pinned below.
+          </Text>
+        </View>
 
-      <View style={styles.content}>
-        {initialLoading ? (
-          <QuietLoadingCard label="Loading zone editor..." theme={theme} />
-        ) : (
-          <>
-            {locationMessage ? <QuietBanner theme={theme}>{locationMessage}</QuietBanner> : null}
-            {error ? (
-              <>
-                <QuietBanner theme={theme} tone="danger">{error}</QuietBanner>
-                <QuietSecondaryButton
-                  disabled={saving || deleting}
-                  label="Retry load"
-                  onPress={() => setReloadKey((value) => value + 1)}
-                  theme={theme}
-                />
-              </>
-            ) : null}
+        <View style={styles.content}>
+          {initialLoading ? (
+            <QuietLoadingCard label="Loading zone editor..." theme={theme} />
+          ) : (
+            <>
+              <View style={[styles.editorStatus, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                <View style={styles.editorStatusCopy}>
+                  <Text style={[styles.editorStatusTitle, { color: theme.text }]}>
+                    {name.trim() ? name.trim() : "Untitled zone"}
+                  </Text>
+                  <Text style={[styles.editorStatusMeta, { color: theme.muted }]}>
+                    {radiusMeters}m • {targetMode} • {isActive ? "Active" : "Paused"}
+                  </Text>
+                </View>
+                <View style={[styles.editorStatusPill, { backgroundColor: theme.accentSoft }]}>
+                  <Text style={[styles.editorStatusPillLabel, { color: theme.text }]}>
+                    {isEdit ? "Editing" : "New"}
+                  </Text>
+                </View>
+              </View>
 
-            <QuietInput
-              label="Zone name"
-              message="Use a name you will recognize quickly during class or meeting setup."
-              onChangeText={setName}
-              placeholder="Library, lecture hall, studio..."
-              theme={theme}
-              value={name}
-            />
+              {locationMessage ? <QuietBanner theme={theme}>{locationMessage}</QuietBanner> : null}
+              {error ? (
+                <>
+                  <QuietBanner theme={theme} tone="danger">{error}</QuietBanner>
+                  <QuietSecondaryButton
+                    disabled={saving || deleting}
+                    label="Retry load"
+                    onPress={() => setReloadKey((value) => value + 1)}
+                    theme={theme}
+                  />
+                </>
+              ) : null}
 
-            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={styles.nameCardWrap}>
+                <Text style={[styles.inputLabel, { color: theme.mutedStrong }]}>Zone name</Text>
+                <View
+                  style={[
+                    styles.nameInputShell,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: nameInputFocused ? theme.accent : theme.border,
+                    },
+                  ]}
+                >
+                  <TextInput
+                    onBlur={() => setNameInputFocused(false)}
+                    onChangeText={setName}
+                    onFocus={() => setNameInputFocused(true)}
+                    placeholder="Library, lecture hall, studio..."
+                    placeholderTextColor={theme.placeholder}
+                    style={[styles.nameInput, { color: theme.text }]}
+                    value={name}
+                  />
+                </View>
+                <Text style={[styles.nameInputHint, { color: theme.muted }]}>
+                  Use a name you will recognize quickly during class or meeting setup.
+                </Text>
+              </View>
+
+              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.cardHeader}>
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>Location</Text>
                 <Text style={[styles.cardMeta, { color: theme.muted }]}>Adjust the center coordinate</Text>
@@ -323,6 +470,8 @@ export default function ZoneEditorScreen() {
               <View style={styles.mapWrap}>
                 <ZoneMap
                   coordinate={coordinate}
+                  onInteractionEnd={() => setMapInteracting(false)}
+                  onInteractionStart={() => setMapInteracting(true)}
                   onChangeCoordinate={setCoordinate}
                   radiusMeters={radiusMeters}
                   region={region}
@@ -333,9 +482,26 @@ export default function ZoneEditorScreen() {
               <Text style={[styles.coordinateText, { color: theme.mutedStrong }]}>
                 {coordinate.latitude.toFixed(5)}, {coordinate.longitude.toFixed(5)}
               </Text>
+              <Text style={[styles.coordinateHelpText, { color: theme.muted }]}>
+                Tap or long-press on the map, or drag the marker to pick a precise location.
+              </Text>
+              <View style={styles.locationActionStack}>
+                <QuietSecondaryButton
+                  disabled={saving || deleting}
+                  label="Use current location"
+                  onPress={() => void centerMapOnCurrentLocation()}
+                  theme={theme}
+                />
+                <QuietSecondaryButton
+                  disabled={saving || deleting}
+                  label="Open full screen map"
+                  onPress={() => setMapFullScreenVisible(true)}
+                  theme={theme}
+                />
+              </View>
             </View>
 
-            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.cardHeader}>
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>Radius</Text>
                 <Text style={[styles.cardMeta, { color: theme.muted }]}>{radiusMeters} meters</Text>
@@ -364,7 +530,7 @@ export default function ZoneEditorScreen() {
               </View>
             </View>
 
-            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.cardHeader}>
                 <Text style={[styles.sectionLabel, { color: theme.text }]}>Mode</Text>
                 <Text style={[styles.cardMeta, { color: theme.muted }]}>Choose the behavior inside this zone</Text>
@@ -393,7 +559,7 @@ export default function ZoneEditorScreen() {
               </View>
             </View>
 
-            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.switchRow}>
                 <View style={styles.switchCopy}>
                   <Text style={[styles.sectionLabel, { color: theme.text }]}>Active</Text>
@@ -405,7 +571,7 @@ export default function ZoneEditorScreen() {
               </View>
             </View>
 
-            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <View style={styles.switchRow}>
                 <View style={styles.switchCopy}>
                   <Text style={[styles.sectionLabel, { color: theme.text }]}>Schedule</Text>
@@ -474,32 +640,139 @@ export default function ZoneEditorScreen() {
               ) : null}
             </View>
 
-            <View style={styles.buttonStack}>
+              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View style={styles.switchRow}>
+                <View style={styles.switchCopy}>
+                  <Text style={[styles.sectionLabel, { color: theme.text }]}>Notifications</Text>
+                  <Text style={[styles.switchHint, { color: theme.muted }]}>
+                    Control push alerts for this zone.
+                  </Text>
+                </View>
+                <Switch onValueChange={setNotificationsEnabled} value={notificationsEnabled} />
+              </View>
+
+              {notificationsEnabled ? (
+                <View style={styles.notificationRuleStack}>
+                  <View style={styles.switchRow}>
+                    <View style={styles.switchCopy}>
+                      <Text style={[styles.cardMeta, { color: theme.mutedStrong }]}>Notify on enter</Text>
+                    </View>
+                    <Switch onValueChange={setNotifyOnEnter} value={notifyOnEnter} />
+                  </View>
+                  <View style={styles.switchRow}>
+                    <View style={styles.switchCopy}>
+                      <Text style={[styles.cardMeta, { color: theme.mutedStrong }]}>Notify on exit</Text>
+                    </View>
+                    <Switch onValueChange={setNotifyOnExit} value={notifyOnExit} />
+                  </View>
+                  <View style={styles.switchRow}>
+                    <View style={styles.switchCopy}>
+                      <Text style={[styles.cardMeta, { color: theme.mutedStrong }]}>Only notify on failure</Text>
+                      <Text style={[styles.switchHint, { color: theme.muted }]}>
+                        Send push only when automation is blocked or could not apply.
+                      </Text>
+                    </View>
+                    <Switch onValueChange={setNotifyOnlyOnFailure} value={notifyOnlyOnFailure} />
+                  </View>
+                </View>
+              ) : null}
+            </View>
+
+              {isEdit ? (
+                <View style={styles.buttonStack}>
+                  <QuietSecondaryButton
+                    busy={deleting}
+                    label="Delete zone"
+                    onPress={confirmDelete}
+                    theme={theme}
+                  />
+                </View>
+              ) : null}
+            </>
+          )}
+        </View>
+      </ScrollView>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setMapFullScreenVisible(false)}
+        presentationStyle="fullScreen"
+        visible={mapFullScreenVisible}
+      >
+        <SafeAreaView style={[styles.fullScreenMapRoot, { backgroundColor: theme.page }]}>
+          <View style={[styles.fullScreenMapHeader, { borderBottomColor: theme.border }]}>
+            <Text style={[styles.fullScreenMapTitle, { color: theme.text }]}>Pick zone location</Text>
+            <QuietSecondaryButton
+              label="Close"
+              onPress={() => setMapFullScreenVisible(false)}
+              theme={theme}
+            />
+          </View>
+
+          <View style={styles.fullScreenMapBody}>
+            <ZoneMap
+              coordinate={coordinate}
+              height={520}
+              onChangeCoordinate={setCoordinate}
+              radiusMeters={radiusMeters}
+              region={region}
+              theme={theme}
+            />
+            <Text style={[styles.coordinateText, { color: theme.mutedStrong }]}>
+              {coordinate.latitude.toFixed(5)}, {coordinate.longitude.toFixed(5)}
+            </Text>
+            <View style={styles.locationActionStack}>
+              <QuietSecondaryButton
+                disabled={saving || deleting}
+                label="Use current location"
+                onPress={() => void centerMapOnCurrentLocation()}
+                theme={theme}
+              />
+              <QuietPrimaryButton
+                label="Done"
+                onPress={() => setMapFullScreenVisible(false)}
+                theme={theme}
+              />
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {!initialLoading ? (
+        <View style={[styles.stickyFooter, { backgroundColor: theme.page, borderTopColor: theme.border }]}>
+          <View style={styles.footerActions}>
+            <View style={styles.footerPrimary}>
               <QuietPrimaryButton
                 busy={saving}
-                disabled={name.trim().length < 2}
+                disabled={name.trim().length < 2 || deleting}
                 label={isEdit ? "Save changes" : "Create zone"}
                 onPress={() => void saveZone()}
                 theme={theme}
               />
-              <QuietSecondaryButton label="Cancel" onPress={() => router.back()} theme={theme} />
-              {isEdit ? (
-                <QuietSecondaryButton
-                  busy={deleting}
-                  label="Delete zone"
-                  onPress={confirmDelete}
-                  theme={theme}
-                />
-              ) : null}
             </View>
-          </>
-        )}
-      </View>
-    </QuietScreen>
+            <View style={styles.footerSecondary}>
+              <QuietSecondaryButton
+                disabled={saving || deleting}
+                label="Cancel"
+                onPress={() => router.back()}
+                theme={theme}
+              />
+            </View>
+          </View>
+        </View>
+      ) : null}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 120,
+  },
   header: {
     gap: 8,
     paddingHorizontal: 20,
@@ -524,6 +797,62 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingHorizontal: 20,
     paddingTop: 16,
+  },
+  editorStatus: {
+    alignItems: "center",
+    borderRadius: 20,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  editorStatusCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  editorStatusTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  editorStatusMeta: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  editorStatusPill: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  editorStatusPillLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
+  },
+  nameCardWrap: {
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.9,
+    textTransform: "uppercase",
+  },
+  nameInputShell: {
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+  },
+  nameInput: {
+    fontSize: 18,
+    fontWeight: "700",
+    minHeight: 58,
+  },
+  nameInputHint: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   cardHeader: {
     alignItems: "center",
@@ -554,6 +883,14 @@ const styles = StyleSheet.create({
   },
   coordinateText: {
     fontSize: 13,
+  },
+  coordinateHelpText: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  locationActionStack: {
+    maxWidth: 220,
+    gap: 10,
   },
   choiceWrap: {
     flexDirection: "row",
@@ -590,8 +927,48 @@ const styles = StyleSheet.create({
   timeField: {
     flex: 1,
   },
+  notificationRuleStack: {
+    gap: 10,
+  },
   buttonStack: {
     gap: 12,
-    paddingBottom: 18,
+  },
+  stickyFooter: {
+    borderTopWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+  footerActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+  },
+  footerPrimary: {
+    flex: 1,
+  },
+  footerSecondary: {
+    minWidth: 110,
+  },
+  fullScreenMapRoot: {
+    flex: 1,
+  },
+  fullScreenMapHeader: {
+    alignItems: "center",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  fullScreenMapTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  fullScreenMapBody: {
+    flex: 1,
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 12,
   },
 });

@@ -109,6 +109,38 @@ function isScheduleActive(schedule: ZoneSchedule, now = new Date()) {
   return currentMinutes >= startMinutes || currentMinutes < endMinutes;
 }
 
+function calculateDistanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000; // meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function isPointInZone(
+  point: { latitude: number; longitude: number },
+  zone: StoredAutomationZone
+): boolean {
+  const distance = calculateDistanceMeters(
+    point.latitude,
+    point.longitude,
+    zone.lat,
+    zone.lng
+  );
+  return distance <= zone.radiusMeters;
+}
+
 async function postTransitionEvent(options: {
   zone: StoredAutomationZone;
   transition: "enter" | "exit";
@@ -231,6 +263,7 @@ export async function syncGeofencesFromApi(accessToken: string) {
     return;
   }
 
+  const previousStoredZones = await loadAutomationZones();
   const response = await apiRequest<{ zones: Zone[] }>("/api/zones", {
     token: accessToken,
   });
@@ -247,11 +280,32 @@ export async function syncGeofencesFromApi(accessToken: string) {
   }));
 
   await saveAutomationZones(storedZones);
+  const previousActiveStates = await loadActiveZoneStates();
+  const hadActiveZone = Object.values(previousActiveStates).some(Boolean);
+  const previousZoneById = new Map(previousStoredZones.map((zone) => [zone.id, zone]));
 
   if (storedZones.length === 0) {
     const alreadyRunning = await Location.hasStartedGeofencingAsync(TASK_NAME);
     if (alreadyRunning) {
       await Location.stopGeofencingAsync(TASK_NAME);
+    }
+
+    await saveActiveZoneStates({});
+
+    if (hadActiveZone) {
+      const lastActiveZoneId = Object.entries(previousActiveStates).find(([, isActive]) => isActive)?.[0];
+      const lastActiveZone = lastActiveZoneId ? previousZoneById.get(lastActiveZoneId) : null;
+      const result = await setRingerMode("normal");
+
+      await saveLastResult({
+        timestamp: new Date().toISOString(),
+        transition: "exit",
+        zoneName: lastActiveZone?.name ?? "Deleted zone",
+        modeRequested: "normal",
+        applied: result.applied,
+        blocked: result.blocked,
+        reason: result.reason,
+      });
     }
     return;
   }
@@ -266,6 +320,80 @@ export async function syncGeofencesFromApi(accessToken: string) {
   }));
 
   await Location.startGeofencingAsync(TASK_NAME, regions);
+
+  // Immediately check current location to activate/deactivate zones without waiting for OS geofence detection
+  try {
+    const position = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+    const currentPoint = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+    };
+    const desiredActiveZones = storedZones.filter(
+      (zone) => isPointInZone(currentPoint, zone) && isScheduleActive(zone.schedule)
+    );
+    const nextActiveStates = Object.fromEntries(
+      storedZones.map((zone) => [zone.id, desiredActiveZones.some((activeZone) => activeZone.id === zone.id)])
+    ) as Record<string, boolean>;
+    const nextPrimaryZone = desiredActiveZones[0] ?? null;
+    const previousActiveZoneId = Object.entries(previousActiveStates).find(([, isActive]) => isActive)?.[0] ?? null;
+    const previousActiveZone = previousActiveZoneId ? previousZoneById.get(previousActiveZoneId) ?? null : null;
+
+    if (nextPrimaryZone) {
+      const result = await setRingerMode(nextPrimaryZone.targetMode);
+
+      await saveLastResult({
+        timestamp: new Date().toISOString(),
+        transition: "enter",
+        zoneName: nextPrimaryZone.name,
+        modeRequested: nextPrimaryZone.targetMode,
+        applied: result.applied,
+        blocked: result.blocked,
+        reason: result.reason,
+      });
+
+      if (previousActiveZoneId !== nextPrimaryZone.id || !previousActiveStates[nextPrimaryZone.id]) {
+        await postTransitionEvent({
+          zone: nextPrimaryZone,
+          transition: "enter",
+          modeApplied: result.applied ? nextPrimaryZone.targetMode : "unknown",
+          previousMode: "normal",
+          applied: result.applied,
+          blocked: result.blocked,
+          reason: result.reason,
+        });
+      }
+    } else if (hadActiveZone) {
+      const result = await setRingerMode("normal");
+
+      await saveLastResult({
+        timestamp: new Date().toISOString(),
+        transition: "exit",
+        zoneName: previousActiveZone?.name ?? "Zone sync",
+        modeRequested: "normal",
+        applied: result.applied,
+        blocked: result.blocked,
+        reason: result.reason,
+      });
+
+      if (previousActiveZone) {
+        await postTransitionEvent({
+          zone: previousActiveZone,
+          transition: "exit",
+          modeApplied: result.applied ? "normal" : "unknown",
+          previousMode: previousActiveZone.targetMode,
+          applied: result.applied,
+          blocked: result.blocked,
+          reason: result.reason,
+        });
+      }
+    }
+
+    await saveActiveZoneStates(nextActiveStates);
+  } catch {
+    // Silently fail location check - geofence monitoring will still work
+  }
 }
 
 export async function startSilentAutomationMonitoring(accessToken: string) {

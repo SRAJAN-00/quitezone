@@ -60,6 +60,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="notifications"
+        options={{
+          title: "Alerts",
+          tabBarIcon: ({ color, size }) => <MaterialIcons color={color} name="notifications" size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "Settings",
+          tabBarIcon: ({ color, size }) => <MaterialIcons color={color} name="settings" size={size} />,
+        }}
+      />
+      <Tabs.Screen
         name="admin"
         options={{
           href: user?.role === "admin" ? undefined : null,

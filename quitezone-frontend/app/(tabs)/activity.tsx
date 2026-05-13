@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -19,6 +19,8 @@ import { useAuth } from "@/context/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { EventItem, Zone } from "@/lib/quietzone-types";
 import { apiRequest, getUserFacingError } from "@/lib/api";
+
+const REFRESH_TTL_MS = 15000;
 
 function formatTimestamp(timestamp: string) {
   return new Date(timestamp).toLocaleString([], {
@@ -39,49 +41,69 @@ export default function ActivityScreen() {
   const [manualBusy, setManualBusy] = useState<"enter" | "exit" | null>(null);
   const [actionMessage, setActionMessage] = useState("");
   const [selectedZoneId, setSelectedZoneId] = useState("all");
+  const lastLoadedAtRef = useRef(0);
 
-  const loadEvents = useCallback(async () => {
-    if (!accessToken) {
-      return;
-    }
+  const loadEvents = useCallback(
+    async (force = false) => {
+      if (!accessToken) {
+        return;
+      }
 
-    setLoading(true);
-    setError("");
+      if (
+        !force &&
+        (events.length > 0 || zones.length > 0) &&
+        Date.now() - lastLoadedAtRef.current < REFRESH_TTL_MS
+      ) {
+        return;
+      }
 
-    try {
-      const [eventResponse, zoneResponse] = await Promise.all([
-        apiRequest<{ events: EventItem[] }>("/api/events?limit=50", {
-          token: accessToken,
-        }),
-        apiRequest<{ zones: Zone[] }>("/api/zones", {
-          token: accessToken,
-        }),
-      ]);
-      setEvents(eventResponse.events);
-      setZones(zoneResponse.zones);
-    } catch (nextError) {
-      setError(getUserFacingError(nextError));
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken]);
+      setLoading(true);
+      setError("");
+
+      try {
+        const [eventResponse, zoneResponse] = await Promise.all([
+          apiRequest<{ events: EventItem[] }>("/api/events?limit=50", {
+            token: accessToken,
+          }),
+          apiRequest<{ zones: Zone[] }>("/api/zones", {
+            token: accessToken,
+          }),
+        ]);
+        setEvents(eventResponse.events);
+        setZones(zoneResponse.zones);
+        lastLoadedAtRef.current = Date.now();
+      } catch (nextError) {
+        setError(getUserFacingError(nextError));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [accessToken, events.length, zones.length],
+  );
 
   useFocusEffect(
     useCallback(() => {
       void loadEvents();
-    }, [loadEvents])
+    }, [loadEvents]),
   );
 
   const filteredEvents = useMemo(
-    () => events.filter((event) => selectedZoneId === "all" || event.zoneId === selectedZoneId),
-    [events, selectedZoneId]
+    () =>
+      events.filter(
+        (event) => selectedZoneId === "all" || event.zoneId === selectedZoneId,
+      ),
+    [events, selectedZoneId],
   );
 
-  const blockedCount = filteredEvents.filter((event) => event.metadata?.blocked).length;
-  const appliedCount = filteredEvents.filter(
-    (event) => event.metadata?.ringerApplied && !event.metadata?.blocked
+  const blockedCount = filteredEvents.filter(
+    (event) => event.metadata?.blocked,
   ).length;
-  const manualCount = filteredEvents.filter((event) => event.metadata?.source === "manual-v1").length;
+  const appliedCount = filteredEvents.filter(
+    (event) => event.metadata?.ringerApplied && !event.metadata?.blocked,
+  ).length;
+  const manualCount = filteredEvents.filter(
+    (event) => event.metadata?.source === "manual-v1",
+  ).length;
 
   async function logManualTransition(transition: "enter" | "exit") {
     if (!accessToken) {
@@ -113,7 +135,7 @@ export default function ActivityScreen() {
         token: accessToken,
       });
       setActionMessage(`Logged "${transition}" transition.`);
-      await loadEvents();
+      await loadEvents(true);
     } catch (nextError) {
       setActionMessage(getUserFacingError(nextError));
     } finally {
@@ -125,7 +147,7 @@ export default function ActivityScreen() {
     <QuietScreen theme={theme}>
       <View style={styles.header}>
         <QuietSectionHeader
-          subtitle="Recent geofence transitions and mode changes across your quiet zones."
+          subtitle="Recent zone transitions and mode changes."
           theme={theme}
           title="Activity"
         />
@@ -133,58 +155,53 @@ export default function ActivityScreen() {
         {!loading && events.length > 0 ? (
           <View style={styles.summaryWrap}>
             <View style={styles.summaryCard}>
-              <Text style={[styles.summaryValue, { color: theme.text }]}>{filteredEvents.length}</Text>
-              <Text style={[styles.summaryLabel, { color: theme.mutedStrong }]}>captured transitions</Text>
+              <Text style={[styles.summaryValue, { color: theme.text }]}>
+                {filteredEvents.length}
+              </Text>
+              <Text style={[styles.summaryLabel, { color: theme.mutedStrong }]}>
+                transitions
+              </Text>
             </View>
             <View style={styles.summaryPills}>
               <QuietPill label={`${appliedCount} applied`} theme={theme} />
-              <QuietPill label={`${blockedCount} blocked`} muted={blockedCount === 0} theme={theme} />
-              <QuietPill label={`${manualCount} manual`} muted={manualCount === 0} theme={theme} />
+              <QuietPill
+                label={`${blockedCount} blocked`}
+                muted={blockedCount === 0}
+                theme={theme}
+              />
             </View>
           </View>
         ) : null}
       </View>
 
       <View style={styles.content}>
-        <QuietCard theme={theme}>
-          <Text style={[styles.manualTitle, { color: theme.text }]}>Manual transition</Text>
-          <Text style={[styles.manualCopy, { color: theme.muted }]}>
-            Use this to generate v1 activity events without background automation.
-          </Text>
-          <View style={styles.manualActions}>
-            <QuietPrimaryButton
-              busy={manualBusy === "enter"}
-              disabled={manualBusy !== null}
-              label="Log enter"
-              onPress={() => void logManualTransition("enter")}
-              theme={theme}
-            />
-            <QuietSecondaryButton
-              busy={manualBusy === "exit"}
-              disabled={manualBusy !== null}
-              label="Log exit"
-              onPress={() => void logManualTransition("exit")}
-              theme={theme}
-            />
-          </View>
-          {actionMessage ? <QuietBanner theme={theme}>{actionMessage}</QuietBanner> : null}
-        </QuietCard>
-
         {!loading && zones.length > 0 ? (
           <QuietCard theme={theme}>
-            <Text style={[styles.manualTitle, { color: theme.text }]}>Filter by zone</Text>
+            <Text style={[styles.manualTitle, { color: theme.text }]}>
+              Filter by zone
+            </Text>
             <View style={styles.filterRow}>
               <Pressable
                 onPress={() => setSelectedZoneId("all")}
                 style={[
                   styles.filterChip,
                   {
-                    backgroundColor: selectedZoneId === "all" ? theme.accent : theme.input,
-                    borderColor: selectedZoneId === "all" ? theme.accent : theme.border,
+                    backgroundColor:
+                      selectedZoneId === "all" ? theme.accent : theme.input,
+                    borderColor:
+                      selectedZoneId === "all" ? theme.accent : theme.border,
                   },
                 ]}
               >
-                <Text style={{ color: selectedZoneId === "all" ? theme.accentTextOn : theme.text, fontWeight: "700" }}>
+                <Text
+                  style={{
+                    color:
+                      selectedZoneId === "all"
+                        ? theme.accentTextOn
+                        : theme.text,
+                    fontWeight: "700",
+                  }}
+                >
                   All zones
                 </Text>
               </Pressable>
@@ -202,7 +219,12 @@ export default function ActivityScreen() {
                       },
                     ]}
                   >
-                    <Text style={{ color: selected ? theme.accentTextOn : theme.text, fontWeight: "700" }}>
+                    <Text
+                      style={{
+                        color: selected ? theme.accentTextOn : theme.text,
+                        fontWeight: "700",
+                      }}
+                    >
                       {zone.name}
                     </Text>
                   </Pressable>
@@ -216,7 +238,13 @@ export default function ActivityScreen() {
           <QuietLoadingCard label="Loading recent activity..." theme={theme} />
         ) : error ? (
           <QuietStateCard
-            action={<QuietPrimaryButton label="Retry" onPress={() => void loadEvents()} theme={theme} />}
+            action={
+              <QuietPrimaryButton
+                label="Retry"
+                onPress={() => void loadEvents(true)}
+                theme={theme}
+              />
+            }
             description={error}
             theme={theme}
             title="Could not load activity"
@@ -238,9 +266,20 @@ export default function ActivityScreen() {
             const isEnter = event.transition === "enter";
             const isBlocked = Boolean(event.metadata?.blocked);
             const isManual = event.metadata?.source === "manual-v1";
-            const applied = Boolean(event.metadata?.ringerApplied) && !isBlocked;
-            const statusLabel = isManual ? "manual" : isBlocked ? "blocked" : applied ? "applied" : "logged";
-            const statusColor = isBlocked ? theme.warning : applied ? theme.success : theme.mutedStrong;
+            const applied =
+              Boolean(event.metadata?.ringerApplied) && !isBlocked;
+            const statusLabel = isManual
+              ? "manual"
+              : isBlocked
+                ? "blocked"
+                : applied
+                  ? "applied"
+                  : "logged";
+            const statusColor = isBlocked
+              ? theme.warning
+              : applied
+                ? theme.success
+                : theme.mutedStrong;
 
             return (
               <QuietCard key={event.id} theme={theme}>
@@ -248,7 +287,11 @@ export default function ActivityScreen() {
                   <View
                     style={[
                       styles.eventIcon,
-                      { backgroundColor: isEnter ? theme.accentSoft : theme.pageAlt },
+                      {
+                        backgroundColor: isEnter
+                          ? theme.accentSoft
+                          : theme.pageAlt,
+                      },
                     ]}
                   >
                     <MaterialIcons
@@ -260,12 +303,17 @@ export default function ActivityScreen() {
                   <View style={styles.copy}>
                     <View style={styles.titleRow}>
                       <Text style={[styles.title, { color: theme.text }]}>
-                        {event.zoneName || "Unnamed zone"} {isEnter ? "entered" : "exited"}
+                        {event.zoneName || "Unnamed zone"}{" "}
+                        {isEnter ? "entered" : "exited"}
                       </Text>
                       <View
                         style={[
                           styles.eventBadge,
-                          { backgroundColor: isEnter ? theme.accentSoft : theme.pageAlt },
+                          {
+                            backgroundColor: isEnter
+                              ? theme.accentSoft
+                              : theme.pageAlt,
+                          },
                         ]}
                       >
                         <Text
@@ -281,24 +329,41 @@ export default function ActivityScreen() {
                     <Text style={[styles.meta, { color: theme.muted }]}>
                       {formatTimestamp(event.triggeredAt)}
                     </Text>
-                    <Text style={[styles.description, { color: theme.mutedStrong }]}>
-                      Mode changed from {event.previousMode} to {event.modeApplied}.
+                    <Text
+                      style={[styles.description, { color: theme.mutedStrong }]}
+                    >
+                      Mode changed from {event.previousMode} to{" "}
+                      {event.modeApplied}.
                     </Text>
                     <View style={styles.statusRow}>
                       <View
                         style={[
                           styles.statusBadge,
-                          { borderColor: statusColor, backgroundColor: theme.surfaceStrong },
+                          {
+                            borderColor: statusColor,
+                            backgroundColor: theme.surfaceStrong,
+                          },
                         ]}
                       >
-                        <Text style={[styles.statusBadgeText, { color: statusColor }]}>{statusLabel}</Text>
+                        <Text
+                          style={[
+                            styles.statusBadgeText,
+                            { color: statusColor },
+                          ]}
+                        >
+                          {statusLabel}
+                        </Text>
                       </View>
                       {event.metadata?.source ? (
-                        <Text style={[styles.meta, { color: theme.muted }]}>Source: {String(event.metadata.source)}</Text>
+                        <Text style={[styles.meta, { color: theme.muted }]}>
+                          Source: {String(event.metadata.source)}
+                        </Text>
                       ) : null}
                     </View>
                     {event.metadata?.reason ? (
-                      <Text style={[styles.reasonText, { color: theme.warning }]}>
+                      <Text
+                        style={[styles.reasonText, { color: theme.warning }]}
+                      >
                         Reason: {String(event.metadata.reason)}
                       </Text>
                     ) : null}

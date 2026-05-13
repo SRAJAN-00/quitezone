@@ -15,5 +15,8 @@ export type ZoneMapProps = {
   radiusMeters: number;
   region: ZoneRegion;
   onChangeCoordinate: (coordinate: ZoneCoordinate) => void;
+  height?: number;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
   theme?: QuietTheme;
 };

@@ -1,11 +1,15 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
+import type { NotificationDefaults } from "./quietzone-types";
+import { loadStoredSession, saveStoredSession } from "@/lib/session-storage";
+
 type ApiRequestOptions = {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   token?: string | null;
   signal?: AbortSignal;
+  bypassTokenRefresh?: boolean;
 };
 
 export type ApiError = Error & {
@@ -82,6 +86,45 @@ function toApiError(message: string, partial: Partial<ApiError> = {}) {
   return error;
 }
 
+async function refreshAccessToken(): Promise<string | null> {
+  try {
+    const session = await loadStoredSession();
+    if (!session?.refreshToken) {
+      return null;
+    }
+
+    const response = await fetch(`${getApiBaseUrl()}/api/auth/refresh`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const newTokens = (await response.json()) as {
+      accessToken?: string;
+      refreshToken?: string;
+    };
+    if (!newTokens.accessToken || !newTokens.refreshToken) {
+      return null;
+    }
+
+    await saveStoredSession({
+      accessToken: newTokens.accessToken,
+      refreshToken: newTokens.refreshToken,
+    });
+
+    return newTokens.accessToken;
+  } catch {
+    return null;
+  }
+}
+
 export function getUserFacingError(error: unknown) {
   if (error && typeof error === "object" && "isTimeout" in error && (error as ApiError).isTimeout) {
     return "Request timed out. Check your connection and try again.";
@@ -123,6 +166,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
   const maxAttempts = (options.method ?? "GET") === "GET" ? 2 : 1;
   let lastError: unknown = null;
+  let tokenWasRefreshed = false;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const timeoutHandle = attachAbortTimeout(options.signal, 12000);
@@ -146,6 +190,27 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
           typeof payload === "object" && payload && "code" in payload
             ? String(payload.code)
             : `HTTP_${response.status}`;
+
+        // Handle 401 by attempting token refresh (once per request)
+        if (
+          response.status === 401 &&
+          options.token &&
+          !options.bypassTokenRefresh &&
+          !tokenWasRefreshed
+        ) {
+          tokenWasRefreshed = true;
+          const newToken = await refreshAccessToken();
+
+          if (newToken) {
+            // Retry with new token
+            return apiRequest(path, {
+              ...options,
+              token: newToken,
+              bypassTokenRefresh: true,
+            });
+          }
+        }
+
         throw toApiError(message, {
           status: response.status,
           code,
@@ -179,4 +244,23 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
 
   throw lastError instanceof Error ? lastError : toApiError("Request failed");
+}
+
+export async function getAuthPreferences(token: string) {
+  return apiRequest<{ notificationDefaults: NotificationDefaults }>("/api/auth/preferences", {
+    token,
+  });
+}
+
+export async function updateAuthPreferences(
+  token: string,
+  notificationDefaults: Partial<NotificationDefaults>
+) {
+  return apiRequest<{ notificationDefaults: NotificationDefaults }>("/api/auth/preferences", {
+    method: "PATCH",
+    token,
+    body: {
+      notificationDefaults,
+    },
+  });
 }

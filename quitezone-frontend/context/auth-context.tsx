@@ -1,12 +1,19 @@
 import { PropsWithChildren, createContext, useContext, useEffect, useState } from "react";
 
-import { apiRequest, getApiBaseUrl, getUserFacingError } from "@/lib/api";
-import { AuthUser } from "@/lib/quietzone-types";
+import {
+  apiRequest,
+  getApiBaseUrl,
+  getAuthPreferences,
+  getUserFacingError,
+  updateAuthPreferences,
+} from "@/lib/api";
+import { AuthUser, NotificationDefaults } from "@/lib/quietzone-types";
 import {
   startSilentAutomationMonitoring,
   stopSilentAutomationMonitoring,
   syncGeofencesFromApi,
 } from "@/lib/silent-automation/geofence-runtime";
+import { registerDevicePushToken } from "@/lib/notifications/push-registration";
 import {
   StoredSession,
   clearStoredSession,
@@ -37,16 +44,41 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   register: (email: string, password: string) => Promise<boolean>;
+  saveNotificationDefaults: (defaults: Partial<NotificationDefaults>) => Promise<boolean>;
   user: AuthUser | null;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const DEFAULT_NOTIFICATION_DEFAULTS: NotificationDefaults = {
+  enabled: true,
+  notifyOnEnter: true,
+  notifyOnExit: true,
+  onlyOnFailure: false,
+};
+
+function normalizeNotificationDefaults(
+  defaults: Partial<NotificationDefaults> | null | undefined
+): NotificationDefaults {
+  return {
+    enabled: defaults?.enabled ?? DEFAULT_NOTIFICATION_DEFAULTS.enabled,
+    notifyOnEnter: defaults?.notifyOnEnter ?? DEFAULT_NOTIFICATION_DEFAULTS.notifyOnEnter,
+    notifyOnExit: defaults?.notifyOnExit ?? DEFAULT_NOTIFICATION_DEFAULTS.notifyOnExit,
+    onlyOnFailure: defaults?.onlyOnFailure ?? DEFAULT_NOTIFICATION_DEFAULTS.onlyOnFailure,
+  };
+}
+
 async function fetchProfile(accessToken: string) {
   const response = await apiRequest<{ user: AuthUser }>("/api/auth/me", {
     token: accessToken,
   });
-  return response.user;
+
+  return {
+    ...response.user,
+    notificationDefaults: normalizeNotificationDefaults(
+      response.user.notificationDefaults
+    ),
+  };
 }
 
 export function AuthProvider({ children }: PropsWithChildren) {
@@ -90,6 +122,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (active) {
           setError("Automation setup needs attention. Check permissions in Home.");
         }
+        return;
+      }
+
+      try {
+        const pushRegistration = await registerDevicePushToken(accessToken);
+        if (!pushRegistration.registered && active && pushRegistration.reason) {
+          if (!pushRegistration.reason.includes("not installed")) {
+            setError(pushRegistration.reason);
+          }
+        }
+      } catch {
+        if (active) {
+          setError("Push notifications could not be enabled.");
+        }
       }
     }
 
@@ -104,7 +150,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setAccessToken(session.accessToken);
     setRefreshToken(session.refreshToken);
     if (nextUser) {
-      setUser(nextUser);
+      const preferences = await getAuthPreferences(session.accessToken).catch(
+        () => null
+      );
+      setUser({
+        ...nextUser,
+        notificationDefaults: normalizeNotificationDefaults(
+          preferences?.notificationDefaults ?? nextUser.notificationDefaults
+        ),
+      });
     } else {
       const profile = await fetchProfile(session.accessToken);
       setUser(profile);
@@ -242,6 +296,30 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }
 
+  async function saveNotificationDefaults(defaults: Partial<NotificationDefaults>) {
+    if (!accessToken || !user) {
+      return false;
+    }
+
+    try {
+      const response = await updateAuthPreferences(accessToken, defaults);
+      setUser((currentUser) =>
+        currentUser
+          ? {
+              ...currentUser,
+              notificationDefaults: normalizeNotificationDefaults(
+                response.notificationDefaults
+              ),
+            }
+          : currentUser
+      );
+      return true;
+    } catch (error) {
+      setError(getUserFacingError(error));
+      return false;
+    }
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -256,6 +334,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         logout,
         refreshProfile,
         register,
+        saveNotificationDefaults,
         user,
       }}
     >
