@@ -4,13 +4,14 @@ import { StyleSheet, Text, View } from "react-native";
 
 import {
   QuietBanner,
-  QuietHero,
+  QuietCard,
   QuietInput,
   QuietPrimaryButton,
   QuietScreen,
   QuietSecondaryButton,
+  QuietHero,
 } from "@/components/ui/quietzone-ui";
-import { getTheme } from "@/constants/theme";
+import { getTheme, Spacing } from "@/constants/theme";
 import { useAuth } from "@/context/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
@@ -31,47 +32,52 @@ export default function LoginScreen() {
   return (
     <QuietScreen theme={theme}>
       <QuietHero
-        eyebrow="Welcome back"
-        subtitle="Sign in to view your active quiet zones, review event activity, and keep your place-based automations in sync."
         theme={theme}
-        title="Return to your QuietZone workspace."
+        title="Welcome back"
+        subtitle="Sign in to manage your zones, track transitions, and keep automation ready."
+        eyebrow="Access QuietZone"
       />
 
       <View style={styles.form}>
-        <QuietInput
-          autoCapitalize="none"
-          keyboardType="email-address"
-          label="Email"
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          theme={theme}
-          value={email}
-        />
-        <QuietInput
-          label="Password"
-          onChangeText={setPassword}
-          placeholder="password123"
-          secureTextEntry
-          theme={theme}
-          value={password}
-        />
+        <QuietCard theme={theme} style={styles.card}>
+          <QuietInput
+            autoCapitalize="none"
+            keyboardType="email-address"
+            label="Email"
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            theme={theme}
+            value={email}
+          />
+          <QuietInput
+            label="Password"
+            onChangeText={setPassword}
+            placeholder="Enter password"
+            secureTextEntry
+            theme={theme}
+            value={password}
+          />
 
-        {error ? <QuietBanner theme={theme} tone="danger">{error}</QuietBanner> : null}
+          {error ? <QuietBanner theme={theme} tone="danger" style={styles.banner}>{error}</QuietBanner> : null}
 
-        <QuietPrimaryButton
-          busy={authBusy}
-          disabled={!email.trim() || !password.trim()}
-          label="Sign in"
-          onPress={() => void submit()}
-          theme={theme}
-        />
-        <QuietSecondaryButton
-          label="Need an account? Register"
-          onPress={() => router.replace("/(auth)/register")}
-          theme={theme}
-        />
+          <QuietPrimaryButton
+            busy={authBusy}
+            disabled={!email.trim() || !password.trim()}
+            label="Sign in"
+            onPress={() => void submit()}
+            theme={theme}
+            style={styles.btn}
+          />
+          <QuietSecondaryButton
+            label="Need an account? Register"
+            onPress={() => router.replace("/(auth)/register")}
+            theme={theme}
+          />
+        </QuietCard>
 
-        <Text style={[styles.meta, { color: theme.muted }]}>Use `user1@example.com` / `password123` for the seeded test account.</Text>
+        <Text style={[styles.meta, { color: theme.muted }]}>
+          Use <Text style={{ color: theme.text, fontWeight: "700" }}>user1@example.com</Text> / <Text style={{ color: theme.text, fontWeight: "700" }}>password123</Text> for test login.
+        </Text>
       </View>
     </QuietScreen>
   );
@@ -79,12 +85,27 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   form: {
-    gap: 14,
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    gap: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
+  },
+  card: {
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  banner: {
+    marginVertical: 4,
+  },
+  btn: {
+    marginTop: 8,
   },
   meta: {
     fontSize: 13,
     lineHeight: 19,
+    textAlign: "center",
+    fontWeight: "500",
+    paddingHorizontal: 20,
   },
 });
+
+

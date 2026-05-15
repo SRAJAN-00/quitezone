@@ -78,6 +78,7 @@ function normalizeZoneNotifications(notifications) {
 
 function normalizeZonePayload(payload) {
   const name = requireString(payload.name, "name", { min: 2, max: 120 });
+  const address = typeof payload.address === "string" ? payload.address.trim() : "";
   const lat = requireNumber(payload.lat, "lat", { min: -90, max: 90 });
   const lng = requireNumber(payload.lng, "lng", { min: -180, max: 180 });
   const radiusMeters = requireNumber(payload.radiusMeters, "radiusMeters", { min: 50, max: 3000 });
@@ -85,9 +86,11 @@ function normalizeZonePayload(payload) {
   const isActive = payload.isActive === undefined ? true : Boolean(payload.isActive);
   const schedule = normalizeZoneSchedule(payload.schedule);
   const notifications = normalizeZoneNotifications(payload.notifications);
+  const normalizedAddress = address ? requireString(address, "address", { min: 2, max: 255 }) : undefined;
 
   return {
     name,
+    address: normalizedAddress,
     center: {
       type: "Point",
       coordinates: [lng, lat],
@@ -104,6 +107,7 @@ function mapZone(zone) {
   return {
     id: zone._id.toString(),
     name: zone.name,
+    address: zone.address ?? undefined,
     lat: zone.center.coordinates[1],
     lng: zone.center.coordinates[0],
     radiusMeters: zone.radiusMeters,
@@ -163,6 +167,7 @@ async function updateZone(req, res, next) {
 
     const mergedPayload = {
       name: req.body.name ?? current.name,
+      address: req.body.address ?? current.address,
       lat: req.body.lat ?? current.center.coordinates[1],
       lng: req.body.lng ?? current.center.coordinates[0],
       radiusMeters: req.body.radiusMeters ?? current.radiusMeters,
@@ -174,6 +179,7 @@ async function updateZone(req, res, next) {
     const normalized = normalizeZonePayload(mergedPayload);
 
     current.name = normalized.name;
+    current.address = normalized.address;
     current.center = normalized.center;
     current.radiusMeters = normalized.radiusMeters;
     current.targetMode = normalized.targetMode;

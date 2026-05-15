@@ -21,6 +21,7 @@ type ButtonProps = {
   label: string;
   onPress: () => void;
   theme: QuietTheme;
+  style?: StyleProp<ViewStyle>;
 };
 
 type ScreenProps = PropsWithChildren<{
@@ -67,12 +68,12 @@ export function QuietHero({
   eyebrow,
   theme,
   children,
-}: PropsWithChildren<{ title: string; subtitle: string; eyebrow: string; theme: QuietTheme }>) {
+}: PropsWithChildren<{ title: string; subtitle: string; eyebrow?: string; theme: QuietTheme }>) {
   return (
     <View style={styles.hero}>
-      <Text style={[styles.eyebrow, { color: theme.accent }]}>{eyebrow}</Text>
+      {eyebrow && <Text style={[styles.eyebrow, { color: theme.muted }]}>{eyebrow}</Text>}
       <Text style={[styles.heroTitle, { color: theme.text }]}>{title}</Text>
-      <Text style={[styles.heroSubtitle, { color: theme.mutedStrong }]}>{subtitle}</Text>
+      <Text style={[styles.heroSubtitle, { color: theme.muted }]}>{subtitle}</Text>
       {children}
     </View>
   );
@@ -83,7 +84,17 @@ export function QuietCard({
   style,
   theme,
 }: PropsWithChildren<{ style?: StyleProp<ViewStyle>; theme: QuietTheme }>) {
-  return <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }, style]}>{children}</View>;
+  return (
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: "#000000" },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
 }
 
 export function QuietSectionHeader({ action, subtitle, theme, title }: SectionHeaderProps) {
@@ -98,7 +109,11 @@ export function QuietSectionHeader({ action, subtitle, theme, title }: SectionHe
   );
 }
 
-export function QuietPrimaryButton({ busy, disabled, label, onPress, theme }: ButtonProps) {
+export function QuietPrimaryButton({ busy, disabled, label, onPress, theme, style }: ButtonProps) {
+  const isDark = theme.page !== "#F5F5F7";
+  const backgroundColor = isDark ? "#F8F8FA" : "#1C1C1E";
+  const textColor = isDark ? "#111113" : "#FFFFFF";
+
   return (
     <Pressable
       disabled={disabled || busy}
@@ -106,17 +121,25 @@ export function QuietPrimaryButton({ busy, disabled, label, onPress, theme }: Bu
       style={({ pressed }) => [
         styles.primaryButton,
         {
-          backgroundColor: theme.accent,
+          backgroundColor,
+          borderColor: backgroundColor,
+          borderWidth: 0,
           opacity: disabled ? 0.55 : pressed || busy ? 0.85 : 1,
         },
+        style,
       ]}
     >
-      {busy ? <ActivityIndicator color={theme.accentTextOn} /> : <Text style={[styles.primaryButtonText, { color: theme.accentTextOn }]}>{label}</Text>}
+      {busy ? <ActivityIndicator color={textColor} /> : <Text style={[styles.primaryButtonText, { color: textColor }]}>{label}</Text>}
     </Pressable>
   );
 }
 
-export function QuietSecondaryButton({ busy, disabled, label, onPress, theme }: ButtonProps) {
+export function QuietSecondaryButton({ busy, disabled, label, onPress, theme, style }: ButtonProps) {
+  const isDark = theme.page !== "#F5F5F7";
+  const backgroundColor = isDark ? "#1B1B21" : "#FFFFFF";
+  const borderColor = isDark ? "#3B3B47" : "#E5E5E5";
+  const textColor = isDark ? "#F8F8FA" : "#1C1C1E";
+
   return (
     <Pressable
       disabled={disabled || busy}
@@ -124,12 +147,14 @@ export function QuietSecondaryButton({ busy, disabled, label, onPress, theme }: 
       style={({ pressed }) => [
         styles.secondaryButton,
         {
-          borderColor: theme.borderStrong,
+          borderColor,
+          backgroundColor,
           opacity: disabled ? 0.55 : pressed || busy ? 0.85 : 1,
         },
+        style
       ]}
     >
-      {busy ? <ActivityIndicator color={theme.text} /> : <Text style={[styles.secondaryButtonText, { color: theme.text }]}>{label}</Text>}
+      {busy ? <ActivityIndicator color={textColor} /> : <Text style={[styles.secondaryButtonText, { color: textColor }]}>{label}</Text>}
     </Pressable>
   );
 }
@@ -159,12 +184,19 @@ export function QuietBanner({
   children,
   tone = "neutral",
   theme,
-}: PropsWithChildren<{ tone?: "neutral" | "danger" | "success"; theme: QuietTheme }>) {
+  style,
+}: PropsWithChildren<{ tone?: "neutral" | "danger" | "success"; theme: QuietTheme; style?: StyleProp<ViewStyle> }>) {
   const color =
     tone === "danger" ? theme.danger : tone === "success" ? theme.success : theme.mutedStrong;
+  const backgroundColor =
+    tone === "danger"
+      ? "rgba(239, 68, 68, 0.12)"
+      : tone === "success"
+        ? "rgba(16, 185, 129, 0.12)"
+        : theme.surfaceStrong;
 
   return (
-    <View style={[styles.banner, { backgroundColor: theme.accentSoft, borderColor: color }]}>
+    <View style={[styles.banner, { backgroundColor, borderColor: color }, style]}>
       <Text style={[styles.bannerText, { color: theme.text }]}>{children}</Text>
     </View>
   );
@@ -172,10 +204,12 @@ export function QuietBanner({
 
 export function QuietStateCard({ action, description, theme, title }: StateCardProps) {
   return (
-    <QuietCard theme={theme}>
-      <Text style={[styles.stateTitle, { color: theme.text }]}>{title}</Text>
-      <Text style={[styles.stateDescription, { color: theme.muted }]}>{description}</Text>
-      {action}
+    <QuietCard theme={theme} style={styles.stateCard}>
+      <View style={styles.stateCardCopy}>
+        <Text style={[styles.stateTitle, { color: theme.text }]}>{title}</Text>
+        <Text style={[styles.stateDescription, { color: theme.muted }]}>{description}</Text>
+      </View>
+      {action && <View style={styles.stateCardAction}>{action}</View>}
     </QuietCard>
   );
 }
@@ -183,7 +217,7 @@ export function QuietStateCard({ action, description, theme, title }: StateCardP
 export function QuietLoadingCard({ label, theme }: { label: string; theme: QuietTheme }) {
   return (
     <QuietCard theme={theme} style={styles.loadingCard}>
-      <ActivityIndicator color={theme.accent} />
+      <ActivityIndicator color={theme.accent} size="large" />
       <Text style={[styles.loadingLabel, { color: theme.muted }]}>{label}</Text>
     </QuietCard>
   );
@@ -202,7 +236,7 @@ export function QuietPill({
     <View
       style={[
         styles.pill,
-        { backgroundColor: muted ? theme.surfaceStrong : theme.accentSoft, borderColor: theme.border },
+        { backgroundColor: muted ? theme.surfaceStrong : theme.surface, borderColor: theme.border },
       ]}
     >
       <Text style={[styles.pillLabel, { color: muted ? theme.mutedStrong : theme.text }]}>{label}</Text>
@@ -216,141 +250,157 @@ const styles = StyleSheet.create({
   },
   screenContent: {
     flexGrow: 1,
-    paddingBottom: Spacing.xxl,
+    paddingBottom: 34,
   },
   hero: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xl,
-    paddingBottom: Spacing.xl,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 8,
   },
   eyebrow: {
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-    marginBottom: Spacing.xs,
+    fontSize: 11,
+    fontWeight: "500",
+    letterSpacing: 0.8,
+    marginBottom: 6,
     textTransform: "uppercase",
   },
   heroTitle: {
-    fontSize: 34,
-    fontWeight: "800",
-    lineHeight: 40,
-    letterSpacing: -0.5,
+    fontSize: 30,
+    fontWeight: "600",
+    lineHeight: 36,
   },
   heroSubtitle: {
-    fontSize: 16,
-    lineHeight: 24,
-    marginTop: Spacing.sm,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 6,
     maxWidth: 620,
+    fontWeight: "500",
   },
   card: {
-    borderRadius: Radius.lg,
+    borderRadius: 18,
     borderWidth: 1,
-    gap: Spacing.sm,
-    padding: Spacing.lg,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    gap: 12,
+    padding: 20,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   sectionHeader: {
     alignItems: "center",
     flexDirection: "row",
     gap: Spacing.md,
     justifyContent: "space-between",
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   sectionCopy: {
     flex: 1,
-    gap: 4,
+    gap: 6,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "600",
-    letterSpacing: -0.5,
+    letterSpacing: 0,
   },
   sectionSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 19,
   },
   primaryButton: {
     alignItems: "center",
-    borderRadius: Radius.md,
+    borderRadius: 14,
+    borderWidth: 1,
     justifyContent: "center",
     minHeight: 48,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
   },
   primaryButtonText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
   },
   secondaryButton: {
     alignItems: "center",
-    borderRadius: Radius.md,
-    borderWidth: 1,
+    borderRadius: 14,
+    borderWidth: 1.5,
     justifyContent: "center",
     minHeight: 48,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
   },
   secondaryButtonText: {
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 14,
+    fontWeight: "600",
   },
   inputWrap: {
     gap: 8,
   },
   inputLabel: {
     fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.9,
+    fontWeight: "600",
+    letterSpacing: 0.2,
     textTransform: "uppercase",
   },
   input: {
-    borderRadius: Radius.md,
-    borderWidth: 1,
+    borderRadius: 14,
+    borderWidth: 1.2,
     fontSize: 15,
-    minHeight: 48,
-    paddingHorizontal: Spacing.md,
+    minHeight: 50,
+    paddingHorizontal: 14,
   },
   inputMessage: {
-    fontSize: 12,
+    fontSize: 13,
     lineHeight: 18,
   },
   banner: {
     borderLeftWidth: 4,
-    borderRadius: Radius.sm,
+    borderRadius: Radius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
   },
   bannerText: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  stateCard: {
+    alignItems: "center",
+    textAlign: "center",
+    paddingVertical: Spacing.xl,
+  },
+  stateCardCopy: {
+    alignItems: "center",
+    gap: Spacing.xs,
   },
   stateTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 20,
+    fontWeight: "800",
   },
   stateDescription: {
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  stateCardAction: {
+    marginTop: Spacing.sm,
+    width: "100%",
   },
   loadingCard: {
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 140,
+    minHeight: 180,
+    gap: Spacing.lg,
   },
   loadingLabel: {
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: "600",
   },
   pill: {
     alignSelf: "flex-start",
     borderRadius: Radius.pill,
     borderWidth: 1,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   pillLabel: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "500",
   },
 });

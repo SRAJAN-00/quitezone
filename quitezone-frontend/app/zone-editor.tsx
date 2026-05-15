@@ -7,16 +7,24 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
   Switch,
   Text,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
-import { QuietBanner, QuietInput, QuietLoadingCard, QuietPrimaryButton, QuietSecondaryButton } from "@/components/ui/quietzone-ui";
+import { 
+  QuietBanner, 
+  QuietInput, 
+  QuietLoadingCard, 
+  QuietPrimaryButton, 
+  QuietSecondaryButton, 
+  QuietCard, 
+  QuietHero 
+} from "@/components/ui/quietzone-ui";
 import { ZoneMap } from "@/components/ui/zone-map-view";
-import { getTheme } from "@/constants/theme";
+import { getTheme, Spacing, Radius } from "@/constants/theme";
 import { useAuth } from "@/context/auth-context";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Zone } from "@/lib/quietzone-types";
@@ -53,6 +61,34 @@ const DEFAULT_NOTIFICATION_SETTINGS = {
   onlyOnFailure: false,
 };
 
+function SettingRow({
+  label,
+  hint,
+  value,
+  onValueChange,
+  theme,
+  last,
+  compact,
+}: {
+  label: string;
+  hint?: string;
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+  theme: any;
+  last?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <View style={[styles.settingRow, compact && styles.settingRowCompact, !last && { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
+      <View style={styles.settingCopy}>
+        <Text style={[styles.settingLabel, { color: theme.text }]}>{label}</Text>
+        {hint ? <Text style={[styles.settingHint, { color: theme.muted }]}>{hint}</Text> : null}
+      </View>
+      <Switch onValueChange={onValueChange} value={value} />
+    </View>
+  );
+}
+
 export default function ZoneEditorScreen() {
   const theme = getTheme(useColorScheme());
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -64,6 +100,7 @@ export default function ZoneEditorScreen() {
   const [radiusMeters, setRadiusMeters] = useState(100);
   const [targetMode, setTargetMode] = useState<"silent" | "vibrate">("silent");
   const [isActive, setIsActive] = useState(true);
+  const [address, setAddress] = useState("");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleDays, setScheduleDays] = useState<number[]>([...DEFAULT_ZONE_SCHEDULE.daysOfWeek]);
   const [scheduleStartTime, setScheduleStartTime] = useState(DEFAULT_ZONE_SCHEDULE.startTime);
@@ -79,10 +116,10 @@ export default function ZoneEditorScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [addressLookupBusy, setAddressLookupBusy] = useState(false);
   const [locationMessage, setLocationMessage] = useState("");
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
-  const [nameInputFocused, setNameInputFocused] = useState(false);
   const [mapFullScreenVisible, setMapFullScreenVisible] = useState(false);
   const [mapInteracting, setMapInteracting] = useState(false);
 
@@ -122,6 +159,7 @@ export default function ZoneEditorScreen() {
           }
 
           setName(current.name);
+          setAddress(current.address ?? "");
           setRadiusMeters(current.radiusMeters);
           setTargetMode(current.targetMode);
           setIsActive(current.isActive);
@@ -143,6 +181,7 @@ export default function ZoneEditorScreen() {
             longitude: current.lng,
           });
         } else {
+          setAddress("");
           const nextDefaults = {
             ...DEFAULT_NOTIFICATION_SETTINGS,
             ...(user?.notificationDefaults || {}),
@@ -254,6 +293,45 @@ export default function ZoneEditorScreen() {
     }
   }
 
+  async function centerMapOnAddress() {
+    const trimmedAddress = address.trim();
+    if (!trimmedAddress) {
+      setError("Enter an address or landmark first.");
+      return;
+    }
+
+    try {
+      setError("");
+      setAddressLookupBusy(true);
+
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(trimmedAddress)}`
+      );
+
+      if (!response.ok) {
+        throw new Error("Could not look up that address right now.");
+      }
+
+      const results = (await response.json()) as { lat: string; lon: string; display_name?: string }[];
+      const match = results[0];
+
+      if (!match) {
+        setLocationMessage("No matching address was found. Try a more specific place name.");
+        return;
+      }
+
+      setCoordinate({
+        latitude: Number(match.lat),
+        longitude: Number(match.lon),
+      });
+      setLocationMessage(`Centered map on ${match.display_name || trimmedAddress}.`);
+    } catch (nextError) {
+      setError(getUserFacingError(nextError));
+    } finally {
+      setAddressLookupBusy(false);
+    }
+  }
+
   if (isHydrating) {
     return <QuietLoadingCard label="Opening editor..." theme={theme} />;
   }
@@ -301,6 +379,7 @@ export default function ZoneEditorScreen() {
     try {
       const payload = {
         name: trimmedName,
+        address: address.trim() || undefined,
         lat: coordinate.latitude,
         lng: coordinate.longitude,
         radiusMeters,
@@ -329,7 +408,6 @@ export default function ZoneEditorScreen() {
         });
       }
 
-      // Sync geofences immediately so new zone activates if user is inside
       await syncGeofencesFromApi(accessToken);
 
       router.back();
@@ -367,7 +445,6 @@ export default function ZoneEditorScreen() {
         token: accessToken,
       });
 
-      // Sync geofences immediately so device returns to normal if it was in the deleted zone
       await syncGeofencesFromApi(accessToken);
 
       router.back();
@@ -392,40 +469,21 @@ export default function ZoneEditorScreen() {
         scrollEnabled={!mapInteracting}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={[styles.eyebrow, { color: theme.mutedStrong }]}>{isEdit ? "Edit zone" : "Create zone"}</Text>
-          <Text style={[styles.title, { color: theme.text }]}>
-            {isEdit ? "Adjust your quiet boundary." : "Place a new quiet boundary."}
-          </Text>
-          <Text style={[styles.subtitle, { color: theme.muted }]}>
-            Drop the pin, choose the phone behavior, and save whenever you are ready. The save action stays pinned below.
-          </Text>
-        </View>
+        <QuietHero
+          theme={theme}
+          title={isEdit ? "Edit zone" : "New zone"}
+          subtitle="Place your boundary, set the phone behavior, and save."
+          eyebrow="Zone configuration"
+        />
 
-        <View style={styles.content}>
+        <View style={styles.body}>
           {initialLoading ? (
-            <QuietLoadingCard label="Loading zone editor..." theme={theme} />
+            <QuietLoadingCard label="Loading editor..." theme={theme} />
           ) : (
             <>
-              <View style={[styles.editorStatus, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <View style={styles.editorStatusCopy}>
-                  <Text style={[styles.editorStatusTitle, { color: theme.text }]}>
-                    {name.trim() ? name.trim() : "Untitled zone"}
-                  </Text>
-                  <Text style={[styles.editorStatusMeta, { color: theme.muted }]}>
-                    {radiusMeters}m • {targetMode} • {isActive ? "Active" : "Paused"}
-                  </Text>
-                </View>
-                <View style={[styles.editorStatusPill, { backgroundColor: theme.accentSoft }]}>
-                  <Text style={[styles.editorStatusPillLabel, { color: theme.text }]}>
-                    {isEdit ? "Editing" : "New"}
-                  </Text>
-                </View>
-              </View>
-
-              {locationMessage ? <QuietBanner theme={theme}>{locationMessage}</QuietBanner> : null}
+              {locationMessage ? <QuietBanner theme={theme} style={styles.banner}>{locationMessage}</QuietBanner> : null}
               {error ? (
-                <>
+                <View style={styles.bannerWrap}>
                   <QuietBanner theme={theme} tone="danger">{error}</QuietBanner>
                   <QuietSecondaryButton
                     disabled={saving || deleting}
@@ -433,160 +491,158 @@ export default function ZoneEditorScreen() {
                     onPress={() => setReloadKey((value) => value + 1)}
                     theme={theme}
                   />
-                </>
+                </View>
               ) : null}
 
-              <View style={styles.nameCardWrap}>
-                <Text style={[styles.inputLabel, { color: theme.mutedStrong }]}>Zone name</Text>
-                <View
-                  style={[
-                    styles.nameInputShell,
-                    {
-                      backgroundColor: theme.surface,
-                      borderColor: nameInputFocused ? theme.accent : theme.border,
-                    },
-                  ]}
-                >
-                  <TextInput
-                    onBlur={() => setNameInputFocused(false)}
-                    onChangeText={setName}
-                    onFocus={() => setNameInputFocused(true)}
-                    placeholder="Library, lecture hall, studio..."
-                    placeholderTextColor={theme.placeholder}
-                    style={[styles.nameInput, { color: theme.text }]}
-                    value={name}
+              <QuietCard theme={theme} style={styles.editorCard}>
+                <QuietInput
+                  label="Zone name"
+                  onChangeText={setName}
+                  placeholder="Library, office, gym..."
+                  theme={theme}
+                  value={name}
+                />
+                <QuietInput
+                  label="Address"
+                  message="Enter a place name, road, or full address, then center the pin there."
+                  onChangeText={setAddress}
+                  placeholder="123 Main St, Bangalore"
+                  theme={theme}
+                  value={address}
+                />
+                <QuietPrimaryButton
+                  busy={addressLookupBusy}
+                  disabled={saving || deleting}
+                  label="Find address"
+                  onPress={() => void centerMapOnAddress()}
+                  theme={theme}
+                  style={styles.addressBtn}
+                />
+              </QuietCard>
+
+              <QuietCard theme={theme} style={styles.editorCard}>
+                <View style={styles.cardHeader}>
+                  <Text style={[styles.sectionLabel, { color: theme.text }]}>Location</Text>
+                  <Text style={[styles.cardMeta, { color: theme.muted }]}>
+                    {coordinate.latitude.toFixed(5)}, {coordinate.longitude.toFixed(5)}
+                  </Text>
+                </View>
+                <View style={[styles.mapWrap, { borderColor: theme.border }]}>
+                  <ZoneMap
+                    coordinate={coordinate}
+                    height={320}
+                    onInteractionEnd={() => setMapInteracting(false)}
+                    onInteractionStart={() => setMapInteracting(true)}
+                    onChangeCoordinate={setCoordinate}
+                    radiusMeters={radiusMeters}
+                    region={region}
+                    theme={theme}
                   />
                 </View>
-                <Text style={[styles.nameInputHint, { color: theme.muted }]}>
-                  Use a name you will recognize quickly during class or meeting setup.
-                </Text>
-              </View>
-
-              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.cardHeader}>
-                <Text style={[styles.sectionLabel, { color: theme.text }]}>Location</Text>
-                <Text style={[styles.cardMeta, { color: theme.muted }]}>Adjust the center coordinate</Text>
-              </View>
-              <View style={styles.mapWrap}>
-                <ZoneMap
-                  coordinate={coordinate}
-                  onInteractionEnd={() => setMapInteracting(false)}
-                  onInteractionStart={() => setMapInteracting(true)}
-                  onChangeCoordinate={setCoordinate}
-                  radiusMeters={radiusMeters}
-                  region={region}
-                  theme={theme}
-                />
-              </View>
-
-              <Text style={[styles.coordinateText, { color: theme.mutedStrong }]}>
-                {coordinate.latitude.toFixed(5)}, {coordinate.longitude.toFixed(5)}
-              </Text>
-              <Text style={[styles.coordinateHelpText, { color: theme.muted }]}>
-                Tap or long-press on the map, or drag the marker to pick a precise location.
-              </Text>
-              <View style={styles.locationActionStack}>
-                <QuietSecondaryButton
-                  disabled={saving || deleting}
-                  label="Use current location"
-                  onPress={() => void centerMapOnCurrentLocation()}
-                  theme={theme}
-                />
-                <QuietSecondaryButton
-                  disabled={saving || deleting}
-                  label="Open full screen map"
-                  onPress={() => setMapFullScreenVisible(true)}
-                  theme={theme}
-                />
-              </View>
-            </View>
-
-              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.cardHeader}>
-                <Text style={[styles.sectionLabel, { color: theme.text }]}>Radius</Text>
-                <Text style={[styles.cardMeta, { color: theme.muted }]}>{radiusMeters} meters</Text>
-              </View>
-              <View style={styles.choiceWrap}>
-                {RADIUS_PRESETS.map((preset) => {
-                  const selected = radiusMeters === preset;
-                  return (
-                    <Pressable
-                      key={preset}
-                      onPress={() => setRadiusMeters(preset)}
-                      style={[
-                        styles.choice,
-                        {
-                          backgroundColor: selected ? theme.accent : theme.input,
-                          borderColor: selected ? theme.accent : theme.border,
-                        },
-                      ]}
-                    >
-                      <Text style={{ color: selected ? theme.accentTextOn : theme.text, fontWeight: "700" }}>
-                        {preset}m
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.cardHeader}>
-                <Text style={[styles.sectionLabel, { color: theme.text }]}>Mode</Text>
-                <Text style={[styles.cardMeta, { color: theme.muted }]}>Choose the behavior inside this zone</Text>
-              </View>
-              <View style={styles.choiceWrap}>
-                {(["silent", "vibrate"] as const).map((mode) => {
-                  const selected = targetMode === mode;
-                  return (
-                    <Pressable
-                      key={mode}
-                      onPress={() => setTargetMode(mode)}
-                      style={[
-                        styles.choice,
-                        {
-                          backgroundColor: selected ? theme.accent : theme.input,
-                          borderColor: selected ? theme.accent : theme.border,
-                        },
-                      ]}
-                    >
-                      <Text style={{ color: selected ? theme.accentTextOn : theme.text, fontWeight: "700" }}>
-                        {mode}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.switchRow}>
-                <View style={styles.switchCopy}>
-                  <Text style={[styles.sectionLabel, { color: theme.text }]}>Active</Text>
-                  <Text style={[styles.switchHint, { color: theme.muted }]}>
-                    Turn this off if you want to keep the zone saved without applying automation.
-                  </Text>
+                <View style={styles.locationActions}>
+                  <QuietSecondaryButton
+                    disabled={saving || deleting}
+                    label="My location"
+                    onPress={() => void centerMapOnCurrentLocation()}
+                    theme={theme}
+                    style={styles.halfBtn}
+                  />
+                  <QuietSecondaryButton
+                    disabled={saving || deleting}
+                    label="Full screen"
+                    onPress={() => setMapFullScreenVisible(true)}
+                    theme={theme}
+                    style={styles.halfBtn}
+                  />
                 </View>
-                <Switch onValueChange={setIsActive} value={isActive} />
-              </View>
-            </View>
+              </QuietCard>
 
-              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.switchRow}>
-                <View style={styles.switchCopy}>
-                  <Text style={[styles.sectionLabel, { color: theme.text }]}>Schedule</Text>
-                  <Text style={[styles.switchHint, { color: theme.muted }]}>
-                    Limit this zone to selected days and hours instead of keeping it active all day.
-                  </Text>
+              <QuietCard theme={theme} style={styles.editorCard}>
+                <View style={styles.cardHeader}>
+                  <Text style={[styles.sectionLabel, { color: theme.text }]}>Radius</Text>
+                  <Text style={[styles.cardMeta, { color: theme.muted }]}>{radiusMeters} meters</Text>
                 </View>
-                <Switch onValueChange={setScheduleEnabled} value={scheduleEnabled} />
-              </View>
+                <View style={styles.choiceGrid}>
+                  {RADIUS_PRESETS.map((preset) => {
+                    const selected = radiusMeters === preset;
+                    return (
+                      <Pressable
+                        key={preset}
+                        onPress={() => setRadiusMeters(preset)}
+                        style={[
+                          styles.choice,
+                          {
+                            backgroundColor: selected ? theme.accent : theme.surfaceStrong,
+                            borderColor: selected ? theme.accent : theme.border,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.choiceText, { color: selected ? theme.accentTextOn : theme.text }]}>
+                          {preset}m
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </QuietCard>
 
-              {scheduleEnabled ? (
-                <>
-                  <View style={styles.scheduleSection}>
-                    <Text style={[styles.cardMeta, { color: theme.mutedStrong }]}>Days</Text>
-                    <View style={styles.choiceWrap}>
+              <QuietCard theme={theme} style={styles.editorCard}>
+                <View style={styles.cardHeader}>
+                  <Text style={[styles.sectionLabel, { color: theme.text }]}>Target mode</Text>
+                  <Text style={[styles.cardMeta, { color: theme.muted }]}>Behavior inside zone</Text>
+                </View>
+                <View style={styles.modeChoiceWrap}>
+                  {(["silent", "vibrate"] as const).map((mode) => {
+                    const selected = targetMode === mode;
+                    return (
+                      <Pressable
+                        key={mode}
+                        onPress={() => setTargetMode(mode)}
+                        style={[
+                          styles.modeChoice,
+                          {
+                            backgroundColor: selected ? theme.accent : theme.surfaceStrong,
+                            borderColor: selected ? theme.accent : theme.border,
+                          },
+                        ]}
+                      >
+                        <MaterialIcons 
+                          name={mode === "silent" ? "notifications-off" : "vibration"} 
+                          size={18} 
+                          color={selected ? theme.accentTextOn : theme.icon} 
+                        />
+                        <Text style={[styles.choiceText, { color: selected ? theme.accentTextOn : theme.text }]}>
+                          {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </QuietCard>
+
+              <QuietCard theme={theme} style={styles.editorCard}>
+                <SettingRow
+                  label="Active"
+                  hint="Apply automation when inside this zone."
+                  value={isActive}
+                  onValueChange={setIsActive}
+                  theme={theme}
+                  last={!scheduleEnabled}
+                />
+                
+                <SettingRow
+                  label="Schedule"
+                  hint="Limit automation to specific days/hours."
+                  value={scheduleEnabled}
+                  onValueChange={setScheduleEnabled}
+                  theme={theme}
+                  last
+                />
+
+                {scheduleEnabled && (
+                  <View style={styles.scheduleDetail}>
+                    <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                    <View style={styles.daysWrap}>
                       {DAYS.map((day) => {
                         const selected = scheduleDays.includes(day.value);
                         return (
@@ -594,100 +650,95 @@ export default function ZoneEditorScreen() {
                             key={day.value}
                             onPress={() => toggleScheduleDay(day.value)}
                             style={[
-                              styles.choice,
+                              styles.dayPill,
                               {
-                                backgroundColor: selected ? theme.accent : theme.input,
+                                backgroundColor: selected ? theme.accent : theme.surfaceStrong,
                                 borderColor: selected ? theme.accent : theme.border,
                               },
                             ]}
                           >
-                            <Text style={{ color: selected ? theme.accentTextOn : theme.text, fontWeight: "700" }}>
+                            <Text style={[styles.dayText, { color: selected ? theme.accentTextOn : theme.text }]}>
                               {day.label}
                             </Text>
                           </Pressable>
                         );
                       })}
                     </View>
+                    <View style={styles.timeRow}>
+                      <View style={styles.timeField}>
+                        <QuietInput
+                          label="Start"
+                          onChangeText={setScheduleStartTime}
+                          placeholder="09:00"
+                          theme={theme}
+                          value={scheduleStartTime}
+                        />
+                      </View>
+                      <View style={styles.timeField}>
+                        <QuietInput
+                          label="End"
+                          onChangeText={setScheduleEndTime}
+                          placeholder="17:00"
+                          theme={theme}
+                          value={scheduleEndTime}
+                        />
+                      </View>
+                    </View>
                   </View>
+                )}
+              </QuietCard>
 
-                  <View style={styles.timeRow}>
-                    <View style={styles.timeField}>
-                      <QuietInput
-                        autoCapitalize="none"
-                        keyboardType="numbers-and-punctuation"
-                        label="Start"
-                        message="24-hour HH:mm"
-                        onChangeText={setScheduleStartTime}
-                        placeholder="09:00"
-                        theme={theme}
-                        value={scheduleStartTime}
-                      />
-                    </View>
-                    <View style={styles.timeField}>
-                      <QuietInput
-                        autoCapitalize="none"
-                        keyboardType="numbers-and-punctuation"
-                        label="End"
-                        message="24-hour HH:mm"
-                        onChangeText={setScheduleEndTime}
-                        placeholder="17:00"
-                        theme={theme}
-                        value={scheduleEndTime}
-                      />
-                    </View>
+              <QuietCard theme={theme} style={styles.editorCard}>
+                <SettingRow
+                  label="Notifications"
+                  hint="Control push alerts for this zone."
+                  value={notificationsEnabled}
+                  onValueChange={setNotificationsEnabled}
+                  theme={theme}
+                  last={!notificationsEnabled}
+                />
+                
+                {notificationsEnabled && (
+                  <View style={styles.notificationRules}>
+                    <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                    <SettingRow
+                      label="Notify on enter"
+                      value={notifyOnEnter}
+                      onValueChange={setNotifyOnEnter}
+                      theme={theme}
+                      compact
+                    />
+                    <SettingRow
+                      label="Notify on exit"
+                      value={notifyOnExit}
+                      onValueChange={setNotifyOnExit}
+                      theme={theme}
+                      compact
+                    />
+                    <SettingRow
+                      label="Failures only"
+                      hint="Alert only if automation is blocked."
+                      value={notifyOnlyOnFailure}
+                      onValueChange={setNotifyOnlyOnFailure}
+                      theme={theme}
+                      compact
+                      last
+                    />
                   </View>
-                </>
-              ) : null}
-            </View>
+                )}
+              </QuietCard>
 
-              <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.switchRow}>
-                <View style={styles.switchCopy}>
-                  <Text style={[styles.sectionLabel, { color: theme.text }]}>Notifications</Text>
-                  <Text style={[styles.switchHint, { color: theme.muted }]}>
-                    Control push alerts for this zone.
-                  </Text>
-                </View>
-                <Switch onValueChange={setNotificationsEnabled} value={notificationsEnabled} />
-              </View>
-
-              {notificationsEnabled ? (
-                <View style={styles.notificationRuleStack}>
-                  <View style={styles.switchRow}>
-                    <View style={styles.switchCopy}>
-                      <Text style={[styles.cardMeta, { color: theme.mutedStrong }]}>Notify on enter</Text>
-                    </View>
-                    <Switch onValueChange={setNotifyOnEnter} value={notifyOnEnter} />
-                  </View>
-                  <View style={styles.switchRow}>
-                    <View style={styles.switchCopy}>
-                      <Text style={[styles.cardMeta, { color: theme.mutedStrong }]}>Notify on exit</Text>
-                    </View>
-                    <Switch onValueChange={setNotifyOnExit} value={notifyOnExit} />
-                  </View>
-                  <View style={styles.switchRow}>
-                    <View style={styles.switchCopy}>
-                      <Text style={[styles.cardMeta, { color: theme.mutedStrong }]}>Only notify on failure</Text>
-                      <Text style={[styles.switchHint, { color: theme.muted }]}>
-                        Send push only when automation is blocked or could not apply.
-                      </Text>
-                    </View>
-                    <Switch onValueChange={setNotifyOnlyOnFailure} value={notifyOnlyOnFailure} />
-                  </View>
-                </View>
-              ) : null}
-            </View>
-
-              {isEdit ? (
-                <View style={styles.buttonStack}>
+              {isEdit && (
+                <View style={styles.deleteSection}>
                   <QuietSecondaryButton
                     busy={deleting}
-                    label="Delete zone"
+                    label="Delete this zone"
                     onPress={confirmDelete}
                     theme={theme}
+                    style={styles.deleteBtn}
                   />
                 </View>
-              ) : null}
+              )}
             </>
           )}
         </View>
@@ -721,17 +772,19 @@ export default function ZoneEditorScreen() {
             <Text style={[styles.coordinateText, { color: theme.mutedStrong }]}>
               {coordinate.latitude.toFixed(5)}, {coordinate.longitude.toFixed(5)}
             </Text>
-            <View style={styles.locationActionStack}>
+            <View style={styles.locationActions}>
               <QuietSecondaryButton
                 disabled={saving || deleting}
                 label="Use current location"
                 onPress={() => void centerMapOnCurrentLocation()}
                 theme={theme}
+                style={{ flex: 1 }}
               />
               <QuietPrimaryButton
                 label="Done"
                 onPress={() => setMapFullScreenVisible(false)}
                 theme={theme}
+                style={{ flex: 1 }}
               />
             </View>
           </View>
@@ -739,22 +792,21 @@ export default function ZoneEditorScreen() {
       </Modal>
 
       {!initialLoading ? (
-        <View style={[styles.stickyFooter, { backgroundColor: theme.page, borderTopColor: theme.border }]}>
+        <View style={[styles.stickyFooter, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
           <View style={styles.footerActions}>
+            <QuietSecondaryButton
+              disabled={saving || deleting}
+              label="Cancel"
+              onPress={() => router.back()}
+              theme={theme}
+              style={styles.footerBtn}
+            />
             <View style={styles.footerPrimary}>
               <QuietPrimaryButton
                 busy={saving}
                 disabled={name.trim().length < 2 || deleting}
                 label={isEdit ? "Save changes" : "Create zone"}
                 onPress={() => void saveZone()}
-                theme={theme}
-              />
-            </View>
-            <View style={styles.footerSecondary}>
-              <QuietSecondaryButton
-                disabled={saving || deleting}
-                label="Cancel"
-                onPress={() => router.back()}
                 theme={theme}
               />
             </View>
@@ -773,181 +825,167 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: 120,
   },
-  header: {
+  body: {
+    gap: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.lg,
+  },
+  editorCard: {
+    padding: Spacing.lg,
+    gap: Spacing.lg,
+  },
+  cardHeader: {
+    alignItems: "flex-start",
+    justifyContent: "center",
     gap: 8,
-    paddingHorizontal: 20,
-    paddingTop: 16,
   },
-  eyebrow: {
-    fontSize: 12,
+  sectionLabel: {
+    fontSize: 18,
     fontWeight: "700",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
+    letterSpacing: -0.2,
   },
-  title: {
-    fontSize: 30,
-    fontWeight: "800",
-    lineHeight: 36,
-  },
-  subtitle: {
+  cardMeta: {
     fontSize: 14,
-    lineHeight: 21,
+    fontWeight: "500",
+    lineHeight: 20,
   },
-  content: {
-    gap: 14,
-    paddingHorizontal: 20,
-    paddingTop: 16,
+  banner: {
+    marginBottom: Spacing.sm,
   },
-  editorStatus: {
-    alignItems: "center",
-    borderRadius: 20,
+  bannerWrap: {
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  mapWrap: {
+    borderRadius: Radius.md,
     borderWidth: 1,
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    overflow: "hidden",
+    height: 320,
   },
-  editorStatusCopy: {
+  locationActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.md,
+    marginTop: 8,
+  },
+  halfBtn: {
+    flex: 1,
+    minWidth: 150,
+  },
+  addressBtn: {
+    alignSelf: "flex-start",
+    minWidth: 160,
+  },
+  choiceGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 4,
+  },
+  choice: {
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  choiceText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  modeChoiceWrap: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 4,
+  },
+  modeChoice: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    paddingVertical: 12,
+  },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: Spacing.md,
+    gap: 16,
+  },
+  settingRowCompact: {
+    paddingVertical: Spacing.sm,
+  },
+  settingCopy: {
     flex: 1,
     gap: 4,
   },
-  editorStatusTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  editorStatusMeta: {
-    fontSize: 13,
+  settingLabel: {
+    fontSize: 16,
     fontWeight: "600",
+    lineHeight: 22,
   },
-  editorStatusPill: {
-    borderRadius: 999,
+  settingHint: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  scheduleDetail: {
+    gap: Spacing.md,
+    marginTop: 8,
+  },
+  divider: {
+    height: 1,
+    width: "100%",
+  },
+  daysWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  dayPill: {
+    borderRadius: Radius.full,
+    borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  editorStatusPillLabel: {
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 0.7,
-    textTransform: "uppercase",
-  },
-  nameCardWrap: {
-    gap: 8,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.9,
-    textTransform: "uppercase",
-  },
-  nameInputShell: {
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-  },
-  nameInput: {
-    fontSize: 18,
-    fontWeight: "700",
-    minHeight: 58,
-  },
-  nameInputHint: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  cardHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  card: {
-    borderRadius: 24,
-    borderWidth: 1,
-    gap: 12,
-    padding: 18,
-  },
-  sectionLabel: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  cardMeta: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  mapWrap: {
-    borderRadius: 22,
-    overflow: "hidden",
-  },
-  map: {
-    height: 300,
-    width: "100%",
-  },
-  coordinateText: {
+  dayText: {
     fontSize: 13,
-  },
-  coordinateHelpText: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  locationActionStack: {
-    maxWidth: 220,
-    gap: 10,
-  },
-  choiceWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  choice: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  scheduleSection: {
-    gap: 10,
-  },
-  switchRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 16,
-    justifyContent: "space-between",
-  },
-  switchCopy: {
-    flex: 1,
-    gap: 6,
-  },
-  switchHint: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontWeight: "600",
   },
   timeRow: {
     flexDirection: "row",
-    gap: 12,
+    gap: Spacing.md,
   },
   timeField: {
     flex: 1,
   },
-  notificationRuleStack: {
-    gap: 10,
+  notificationRules: {
+    marginTop: 4,
   },
-  buttonStack: {
-    gap: 12,
+  deleteSection: {
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xl,
+  },
+  deleteBtn: {
+    borderColor: "transparent",
   },
   stickyFooter: {
     borderTopWidth: 1,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 12,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xl,
   },
   footerActions: {
-    alignItems: "center",
     flexDirection: "row",
-    gap: 10,
+    gap: Spacing.md,
+    alignItems: "center",
   },
   footerPrimary: {
     flex: 1,
+    maxHeight: 50,
   },
-  footerSecondary: {
+  footerBtn: {
     minWidth: 110,
   },
   fullScreenMapRoot: {
@@ -970,5 +1008,10 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 20,
     paddingTop: 12,
+  },
+  coordinateText: {
+    fontSize: 14,
+    fontWeight: "500",
+    textAlign: "center",
   },
 });

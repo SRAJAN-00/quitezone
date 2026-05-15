@@ -17,8 +17,14 @@ export type SilentAutomationApplyResult = {
   reason?: string | null;
 };
 
+export type DoNotDisturbStatus = {
+  active: boolean;
+  reason?: string | null;
+};
+
 type SilentAutomationNativeModule = {
   getSilentAutomationStatus: () => Promise<SilentAutomationStatus>;
+  isDoNotDisturbActive: () => Promise<DoNotDisturbStatus>;
   requestSilentAutomationAccess: () => Promise<SilentAutomationAccessResult>;
   setRingerMode: (mode: "silent" | "vibrate" | "normal") => Promise<SilentAutomationApplyResult>;
 };
@@ -63,6 +69,24 @@ export async function requestSilentAutomationAccess() {
   }
 
   return NativeModule.requestSilentAutomationAccess();
+}
+
+export async function isDoNotDisturbActive() {
+  if (Platform.OS !== "android") {
+    return {
+      active: false,
+      reason: "Android-only feature",
+    };
+  }
+
+  if (!NativeModule) {
+    return {
+      active: false,
+      reason: missingModuleReason(),
+    };
+  }
+
+  return NativeModule.isDoNotDisturbActive();
 }
 
 export async function setRingerMode(mode: "silent" | "vibrate" | "normal") {

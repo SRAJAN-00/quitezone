@@ -448,7 +448,7 @@ export default function AdminScreen() {
                       </Text>
                       <Text style={[styles.itemMeta, { color: theme.muted }]}>
                         Joined {formatTimestamp(member.createdAt)}
-                        {isCurrentUser ? " • Current user" : ""}
+                        {isCurrentUser ? " | Current user" : ""}
                       </Text>
                     </View>
                     <View style={styles.roleActions}>
@@ -514,9 +514,9 @@ export default function AdminScreen() {
                         {zone.name}
                       </Text>
                       <Text style={[styles.itemMeta, { color: theme.muted }]}>
-                        {zone.ownerEmail || "Unknown owner"} •{" "}
-                        {zone.radiusMeters}m • {zone.targetMode}
+                        {zone.ownerEmail || "Unknown owner"} | {zone.radiusMeters}m | {zone.targetMode}
                       </Text>
+
                     </View>
                     <QuietPill
                       label={zone.isActive ? "Active" : "Paused"}
@@ -574,14 +574,15 @@ export default function AdminScreen() {
                     </View>
                     <View style={styles.listCopy}>
                       <Text style={[styles.itemTitle, { color: theme.text }]}>
-                        {event.userEmail || "Unknown user"} •{" "}
-                        {event.zoneName || "Unnamed zone"}
+                        {event.userEmail || "Unknown user"} | {event.zoneName || "Unnamed zone"}
                       </Text>
                       <Text style={[styles.itemMeta, { color: theme.muted }]}>
-                        {event.transition} • {event.previousMode} →{" "}
-                        {event.modeApplied} •{" "}
+                        {event.transition}{" | "}{event.previousMode}{" -> "}{event.modeApplied}{" | "}
                         {formatTimestamp(event.triggeredAt)}
                       </Text>
+
+
+
                     </View>
                   </View>
                 ))
@@ -799,3 +800,4 @@ const styles = StyleSheet.create({
     width: 24,
   },
 });
+

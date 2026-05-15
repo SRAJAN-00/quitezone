@@ -56,6 +56,10 @@ function getNotificationBadgeLabels(zone: Zone) {
   return ["Alerts off"];
 }
 
+function getModeLabel(mode: Zone["targetMode"]) {
+  return mode === "silent" ? "Silent mode" : "Vibrate mode";
+}
+
 export default function ZonesScreen() {
   const router = useRouter();
   const theme = getTheme(useColorScheme());
@@ -106,21 +110,19 @@ export default function ZonesScreen() {
             theme={theme}
             title="Zones"
           />
-          <View style={styles.heroActions}>
-            <View style={styles.heroPrimaryAction}>
+            <View style={styles.heroActions}>
               <QuietPrimaryButton label="Create zone" onPress={() => router.push("/zone-editor")} theme={theme} />
+              <Text style={[styles.heroHint, { color: theme.mutedStrong }]}>
+                Keep your key spaces covered. Tap any zone to edit it.
+              </Text>
             </View>
-            <Text style={[styles.heroHint, { color: theme.mutedStrong }]}>
-              You should never need to hunt for the create action.
-            </Text>
-          </View>
 
           {!loading && !error && zones.length > 0 ? (
             <View style={styles.summaryRow}>
               <QuietPill label={`${zones.length} total`} theme={theme} />
               <QuietPill label={`${activeCount} active`} theme={theme} />
               <QuietPill
-                label={`${zones.filter((zone) => zone.targetMode === "silent").length} silent`}
+                label={`${zones.length - activeCount} paused`}
                 muted
                 theme={theme}
               />
@@ -152,15 +154,35 @@ export default function ZonesScreen() {
               {({ pressed }) => (
                 <QuietCard theme={theme} style={{ opacity: pressed ? 0.88 : 1 }}>
                   <View style={styles.zoneHeader}>
-                    <View style={[styles.zoneIcon, { backgroundColor: theme.accentSoft }]}>
+                    <View style={[styles.zoneIcon, { backgroundColor: theme.surfaceStrong }]}>
                       <MaterialIcons
-                        color={theme.accent}
+                        color={theme.mutedStrong}
                         name={zone.targetMode === "silent" ? "notifications-off" : "vibration"}
                         size={22}
                       />
                     </View>
                     <View style={styles.zoneCopy}>
-                      <Text style={[styles.zoneTitle, { color: theme.text }]}>{zone.name}</Text>
+                      <View style={styles.zoneTitleRow}>
+                        <Text style={[styles.zoneTitle, { color: theme.text }]}>{zone.name}</Text>
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            {
+                              backgroundColor: zone.isActive ? "#DCFCE7" : theme.surfaceStrong,
+                              borderColor: zone.isActive ? "#16A34A" : theme.borderStrong,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusLabel,
+                              { color: zone.isActive ? "#15803D" : theme.mutedStrong },
+                            ]}
+                          >
+                            {zone.isActive ? "Active" : "Paused"}
+                          </Text>
+                        </View>
+                      </View>
                       <Text style={[styles.zoneMeta, { color: theme.muted }]}>
                         {zone.lat.toFixed(4)}, {zone.lng.toFixed(4)}
                       </Text>
@@ -172,8 +194,7 @@ export default function ZonesScreen() {
 
                   <View style={styles.pills}>
                     <QuietPill label={`${zone.radiusMeters}m`} theme={theme} />
-                    <QuietPill label={zone.targetMode} theme={theme} />
-                    <QuietPill label={zone.isActive ? "Active" : "Paused"} muted theme={theme} />
+                    <QuietPill label={getModeLabel(zone.targetMode)} theme={theme} />
                   </View>
                   <View style={styles.pills}>
                     {getNotificationBadgeLabels(zone).map((label) => (
@@ -209,9 +230,6 @@ const styles = StyleSheet.create({
   heroActions: {
     gap: 8,
   },
-  heroPrimaryAction: {
-    maxWidth: 180,
-  },
   heroHint: {
     fontSize: 13,
     fontWeight: "600",
@@ -244,12 +262,31 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 4,
   },
+  zoneTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "space-between",
+  },
   zoneTitle: {
     fontSize: 18,
     fontWeight: "700",
+    flex: 1,
   },
   zoneMeta: {
     fontSize: 14,
+  },
+  statusBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
   },
   pills: {
     flexDirection: "row",

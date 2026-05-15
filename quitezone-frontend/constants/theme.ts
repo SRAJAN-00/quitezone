@@ -1,64 +1,72 @@
 import { Platform } from "react-native";
 
-const lightAccent = "#09090B"; // zinc-950
-const darkAccent = "#FAFAFA"; // zinc-50
+const lightAccent = "#7C3AED";
+const darkAccent = "#A78BFA";
 
 export const Colors = {
   light: {
-    text: "#09090B",
-    background: "#FFFFFF",
+    text: "#1C1C1E",
+    background: "#F5F5F7",
     tint: lightAccent,
-    icon: "#71717A", // zinc-500
-    tabIconDefault: "#A1A1AA", // zinc-400
+    icon: "#8E8E93",
+    tabIconDefault: "#8E8E93",
     tabIconSelected: lightAccent,
-    page: "#FAFAFA", // zinc-50
-    pageAlt: "#F4F4F5", // zinc-100
+    page: "#F5F5F7",
+    pageAlt: "#EFEFF2",
     surface: "#FFFFFF",
-    surfaceStrong: "#FFFFFF",
+    surfaceStrong: "#FAFAFB",
     panel: "#FFFFFF",
-    panelMuted: "#F4F4F5",
-    border: "#E4E4E7", // zinc-200
-    borderStrong: "#D4D4D8", // zinc-300
-    muted: "#71717A", // zinc-500
-    mutedStrong: "#3F3F46", // zinc-700
+    panelMuted: "#F3F3F6",
+    border: "#E5E5E5",
+    borderStrong: "#D8D8D8",
+    muted: "#8E8E93",
+    mutedStrong: "#636366",
     accent: lightAccent,
-    accentSoft: "#F4F4F5", // zinc-100
-    accentTextOn: "#FAFAFA",
-    success: "#10B981", // emerald-500
-    warning: "#F59E0B", // amber-500
-    danger: "#EF4444", // red-500
+    accentSoft: "#F3E8FF",
+    accentTextOn: "#FFFFFF",
+    heroText: "#1C1C1E",
+    heroSubtitle: "#8E8E93",
+    heroGradientStart: "#FFFFFF",
+    heroGradientEnd: "#E5E5E5",
+    success: "#16A34A",
+    warning: "#B45309",
+    danger: "#DC2626",
     input: "#FFFFFF",
-    placeholder: "#A1A1AA", // zinc-400
-    tabBar: "#FFFFFF",
-    overlay: "rgba(0, 0, 0, 0.05)",
+    placeholder: "#A1A1AA",
+    tabBar: "rgba(245, 245, 247, 0.92)",
+    overlay: "rgba(28, 28, 30, 0.14)",
   },
   dark: {
-    text: "#FAFAFA",
-    background: "#09090B",
+    text: "#F8F8FA",
+    background: "#0B0B0C",
     tint: darkAccent,
-    icon: "#A1A1AA", // zinc-400
-    tabIconDefault: "#71717A", // zinc-500
+    icon: "#9CA3AF",
+    tabIconDefault: "#6B7280",
     tabIconSelected: darkAccent,
-    page: "#09090B",
-    pageAlt: "#18181B", // zinc-900
-    surface: "#09090B",
-    surfaceStrong: "#18181B",
-    panel: "#09090B",
-    panelMuted: "#18181B",
-    border: "#27272A", // zinc-800
-    borderStrong: "#3F3F46", // zinc-700
-    muted: "#A1A1AA", // zinc-400
-    mutedStrong: "#D4D4D8", // zinc-300
+    page: "#111113",
+    pageAlt: "#1A1A1F",
+    surface: "#1B1B21",
+    surfaceStrong: "#23232B",
+    panel: "#1B1B21",
+    panelMuted: "#262630",
+    border: "#2D2D37",
+    borderStrong: "#3B3B47",
+    muted: "#9CA3AF",
+    mutedStrong: "#D1D5DB",
     accent: darkAccent,
-    accentSoft: "#27272A", // zinc-800
-    accentTextOn: "#09090B",
+    accentSoft: "#2A213E",
+    accentTextOn: "#0B0B0C",
+    heroText: "#F8F8FA",
+    heroSubtitle: "#9CA3AF",
+    heroGradientStart: "#1B1B21",
+    heroGradientEnd: "#2D2D37",
     success: "#34D399",
     warning: "#FBBF24",
     danger: "#F87171",
-    input: "#09090B",
-    placeholder: "#71717A",
-    tabBar: "#09090B",
-    overlay: "rgba(0, 0, 0, 0.4)",
+    input: "#16161B",
+    placeholder: "#6B7280",
+    tabBar: "rgba(11, 11, 12, 0.9)",
+    overlay: "rgba(0, 0, 0, 0.7)",
   },
 };
 
@@ -70,19 +78,20 @@ export function getTheme(colorScheme: ColorSchemeName | null | undefined) {
 }
 
 export const Radius = {
-  sm: 6,
-  md: 8,
-  lg: 12,
+  sm: 10,
+  md: 16,
+  lg: 24,
   pill: 999,
+  full: 999,
 };
 
 export const Spacing = {
-  xs: 8,
-  sm: 12,
-  md: 16,
-  lg: 20,
-  xl: 24,
-  xxl: 32,
+  xs: 10,
+  sm: 14,
+  md: 20,
+  lg: 24,
+  xl: 32,
+  xxl: 40,
 };
 
 export const Fonts = Platform.select({

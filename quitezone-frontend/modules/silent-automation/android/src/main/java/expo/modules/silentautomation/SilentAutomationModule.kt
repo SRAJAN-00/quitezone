@@ -32,6 +32,29 @@ class SilentAutomationModule : Module() {
       )
     }
 
+    AsyncFunction("isDoNotDisturbActive") {
+      val context = resolveContext() ?: return@AsyncFunction mapOf(
+        "active" to false,
+        "reason" to "Context unavailable"
+      )
+
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+        return@AsyncFunction mapOf(
+          "active" to false,
+          "reason" to null
+        )
+      }
+
+      val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val interruptionFilter = notificationManager.currentInterruptionFilter
+      val dndActive = interruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
+
+      mapOf(
+        "active" to dndActive,
+        "reason" to null
+      )
+    }
+
     AsyncFunction("requestSilentAutomationAccess") {
       val context = resolveContext() ?: return@AsyncFunction mapOf(
         "granted" to false,

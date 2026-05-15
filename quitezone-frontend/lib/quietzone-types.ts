@@ -24,6 +24,7 @@ export type NotificationDefaults = ZoneNotificationSettings;
 export type Zone = {
   id: string;
   name: string;
+  address?: string;
   lat: number;
   lng: number;
   radiusMeters: number;
@@ -70,6 +71,7 @@ export type AdminUser = {
 export type AdminZone = {
   id: string;
   name: string;
+  address?: string;
   ownerId: string;
   ownerEmail: string | null;
   radiusMeters: number;

@@ -80,6 +80,10 @@ const zoneSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    address: {
+      type: String,
+      trim: true,
+    },
     center: {
       type: {
         type: String,

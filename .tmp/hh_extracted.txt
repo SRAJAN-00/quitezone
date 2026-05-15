@@ -1,0 +1,1530 @@
+50
+</div>
+<?php require_once 'includes/footer.php'; ?>
+Edit Product:
+<?php
+$pageTitle = 'Edit Product';
+require_once __DIR__ . '/../config/database.php';
+redirectIfNotAdmin();
+$id = (int)($_GET['id'] ?? 0);
+if (!$id) { header('Location: products.php'); exit; }
+$stmt = $pdo->prepare("SELECT * FROM products WHERE id = ?");
+$stmt->execute([$id]);
+$product = $stmt->fetch();
+if (!$product) { header('Location: products.php'); exit; }
+$categories = $pdo->query("SELECT * FROM categories ORDER BY name")->fetchAll();
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$name = sanitize($_POST['name'] ?? '');
+$desc = sanitize($_POST['description'] ?? '');
+$price = (float)$_POST['price'];
+$discount = (float)$_POST['discount'];
+$categoryId = (int)$_POST['category_id'];
+$sizes = sanitize($_POST['sizes'] ?? 'S,M,L,XL');
+$stock = (int)$_POST['stock'];
+$image = $product['image'];
+if (!empty($_FILES['image_file']['name'])) {
+$uploadDir = __DIR__ . '/../assets/images/products/';
+$ext = pathinfo($_FILES['image_file']['name'], PATHINFO_EXTENSION);
+$image = $product['slug'] . '-' . time() . '.' . $ext;
+move_uploaded_file($_FILES['image_file']['tmp_name'], $uploadDir . $image);
+} elseif (!empty($_POST['image'])) {
+$image = sanitize($_POST['image']);
+}
+
+-- 1 of 50 --
+
+51
+$stmt = $pdo->prepare("UPDATE products SET name=?, description=?, price=?,
+discount=?, category_id=?, sizes=?, stock=?, image=? WHERE id=?");
+$stmt->execute([$name, $desc, $price, $discount, $categoryId, $sizes, $stock, $image,
+$id]);
+header('Location: products.php?updated=1');
+exit;
+}
+require_once 'includes/header.php';
+?>
+<div class="admin-header"><h1>Edit Product</h1><a href="products.php" class="btn btn-
+outline btn-sm"><i class="fas fa-arrow-left"></i> Back</a></div>
+<div class="admin-form">
+<form method="POST" enctype="multipart/form-data">
+<div class="form-group"><label>Product Name *</label><input type="text"
+name="name" required value="<?= sanitize($product['name']) ?>"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+<div class="form-group"><label>Price (₹) *</label><input type="number"
+name="price" step="0.01" required value="<?= $product['price'] ?>"></div>
+<div class="form-group"><label>Discount (%)</label><input type="number"
+name="discount" step="0.01" value="<?= $product['discount'] ?>"></div>
+<div class="form-group"><label>Stock *</label><input type="number"
+name="stock" required value="<?= $product['stock'] ?>"></div>
+</div>
+<div class="form-group"><label>Category *</label><select name="category_id"
+required><?php foreach($categories as $c): ?><option value="<?= $c['id'] ?>" <?=
+$c['id']==$product['category_id']?'selected':'' ?>><?= sanitize($c['name']) ?></option><?php
+endforeach; ?></select></div>
+<div class="form-group"><label>Sizes</label><input type="text" name="sizes"
+value="<?= sanitize($product['sizes']) ?>"></div>
+<div class="form-group"><label>Description</label><textarea name="description"
+rows="4"><?= sanitize($product['description']) ?></textarea></div>
+<div class="form-group">
+
+-- 2 of 50 --
+
+52
+<label>Current Image</label>
+<img src="<?= SITE_URL ?>/assets/images/products/<?= $product['image'] ?>"
+alt="" style="width:100px;height:100px;object-fit:cover;border-radius:8px;margin-
+bottom:8px;" onerror="this.style.display='none'">
+<input type="file" name="image_file" accept="image/*">
+<input type="hidden" name="image" value="<?= sanitize($product['image']) ?>">
+</div>
+<button type="submit" class="form-btn"><i class="fas fa-save"></i> Update
+Product</button>
+</form>
+</div>
+<?php require_once 'includes/footer.php'; ?>
+CUSTOMER SIDE:
+Main Page:
+<?php
+$pageTitle = 'Home';
+require_once 'config/database.php';
+// Fetch featured products
+$stmt = $pdo->query("SELECT p.*, c.name as category_name FROM products p JOIN
+categories c ON p.category_id = c.id ORDER BY p.created_at DESC LIMIT 8");
+$featuredProducts = $stmt->fetchAll();
+// Fetch categories with counts
+$stmt = $pdo->query("SELECT c.*, COUNT(p.id) as product_count FROM categories c
+LEFT JOIN products p ON c.id = p.category_id GROUP BY c.id");
+$categories = $stmt->fetchAll();
+require_once 'includes/header.php';
+?>
+<!-- Hero Section -->
+<section class="hero">
+<div class="container hero-content">
+<div class="hero-text">
+<span class="hero-tag">		 New Collection 2026</span>
+
+-- 3 of 50 --
+
+53
+<h1>Discover Your <span>Perfect Style</span></h1>
+<p>Explore the latest trends in women's fashion. From elegant ethnic wear to chic
+western outfits — find everything you love at Fashionista.</p>
+<div class="hero-btns">
+<a href="products.php" class="btn btn-primary"><i class="fas fa-shopping-
+bag"></i> Shop Now</a>
+<a href="about.php" class="btn btn-outline"><i class="fas fa-arrow-right"></i>
+Learn More</a>
+</div>
+</div>
+<div class="hero-image">
+<img src="<?= SITE_URL ?>/assets/images/hero-banner.jpg" alt="Fashionista
+Collection" onerror="this.src='https://images.unsplash.com/photo-1483985988355-
+763728e1935b?w=500&h=600&fit=crop'">
+</div>
+</div>
+</section>
+<!-- Categories -->
+<section class="section">
+<div class="container">
+<div class="section-header">
+<h2>Shop by Category</h2>
+<p>Find what you love from our curated collections</p>
+<div class="section-divider"></div>
+</div>
+<div class="categories-grid">
+<?php
+$icons = ['ethnic-wear'=>'엋	엌	엍	엎	엏	에','western-wear'=>'躉	躊','formal-wear'=>'蹾	蹿	躀	躁	躂','casual-
+wear'=>'躔	躕	躖','bags'=>'躚	躛	躜','others'=>'		'];
+foreach($categories as $cat): ?>
+<a href="products.php?category=<?= $cat['slug'] ?>" class="category-card">
+<div class="category-icon"><?= $icons[$cat['slug']] ?? '🛍' ?></div>
+
+-- 4 of 50 --
+
+54
+<h3><?= sanitize($cat['name']) ?></h3>
+<p><?= $cat['product_count'] ?> Products</p>
+</a>
+<?php endforeach; ?>
+</div>
+</div>
+</section>
+<!-- Featured Products -->
+<section class="section" style="background: var(--primary-bg);">
+<div class="container">
+<div class="section-header">
+<h2>Trending Now</h2>
+<p>Our most popular picks this season</p>
+<div class="section-divider"></div>
+</div>
+<div class="products-grid">
+<?php foreach($featuredProducts as $p):
+$discountedPrice = getDiscountedPrice($p['price'], $p['discount']);
+?>
+<div class="product-card">
+<div class="product-image">
+<a href="product-detail.php?id=<?= $p['id'] ?>">
+<img src="<?= SITE_URL ?>/assets/images/products/<?= $p['image'] ?>"
+alt="<?= sanitize($p['name']) ?>" onerror="this.src='https://images.unsplash.com/photo-
+1558618666-fcd25c85f82e?w=400&h=500&fit=crop'">
+</a>
+<?php if($p['discount'] > 0): ?>
+<span class="product-badge"><?= $p['discount'] ?>% OFF</span>
+<?php endif; ?>
+<div class="product-actions">
+<button class="product-action-btn" onclick="toggleWishlist(<?= $p['id'] ?>,
+this)" title="Add to Wishlist">
+
+-- 5 of 50 --
+
+55
+<i class="fas fa-heart"></i>
+</button>
+<a href="product-detail.php?id=<?= $p['id'] ?>" class="product-action-btn"
+title="View">
+<i class="fas fa-eye"></i>
+</a>
+</div>
+</div>
+<div class="product-info">
+<span class="product-category"><?= sanitize($p['category_name']) ?></span>
+<h3><a href="product-detail.php?id=<?= $p['id'] ?>"><?= sanitize($p['name'])
+?></a></h3>
+<div class="product-price">
+<span class="price-current"><?= formatPrice($discountedPrice) ?></span>
+<?php if($p['discount'] > 0): ?>
+<span class="price-original"><?= formatPrice($p['price']) ?></span>
+<?php endif; ?>
+</div>
+<div class="product-rating">
+<div class="stars">
+<?php for($i=1;$i<=5;$i++) echo '<i class="fas fa-star"></i>'; ?>
+</div>
+<span class="rating-count">(<?= rand(10,150) ?>)</span>
+</div>
+</div>
+</div>
+<?php endforeach; ?>
+</div>
+<div style="text-align:center; margin-top:40px;">
+<a href="products.php" class="btn btn-primary"><i class="fas fa-th-large"></i> View
+All Products</a>
+</div>
+
+-- 6 of 50 --
+
+56
+</div>
+</section>
+<!-- Features -->
+<section class="section">
+<div class="container">
+<div class="categories-grid">
+<div class="category-card">
+<div class="category-icon">렶	렷	렸	령	랿	렺	렻</div>
+<h3>Free Shipping</h3>
+<p>On orders above ₹999</p>
+</div>
+<div class="category-card">
+<div class="category-icon">괴	괵	괶	괸	괷</div>
+<h3>Cash on Delivery</h3>
+<p>Pay when you receive</p>
+</div>
+<div class="category-card">
+<div class="category-icon">膆	껎	껏</div>
+<h3>Easy Returns</h3>
+<p>7-day return policy</p>
+</div>
+<div class="category-card">
+<div class="category-icon">ꫴ	ꫵ	꫶꫷	꫸	꫹</div>
+<h3>Premium Quality</h3>
+<p>Handpicked products</p>
+</div>
+</div>
+</div>
+</section>
+<?php require_once 'includes/footer.php'; ?>
+
+-- 7 of 50 --
+
+57
+Login:
+<?php
+$pageTitle = 'Login';
+require_once 'config/database.php';
+if (isLoggedIn()) { header('Location: index.php'); exit; }
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$email = sanitize($_POST['email'] ?? '');
+$password = $_POST['password'] ?? '';
+if (empty($email) || empty($password)) {
+$error = 'Please fill in all fields.';
+} else {
+$stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+$stmt->execute([$email]);
+$user = $stmt->fetch();
+if ($user && password_verify($password, $user['password'])) {
+$_SESSION['user_id'] = $user['id'];
+$_SESSION['user_name'] = $user['full_name'];
+$_SESSION['user_email'] = $user['email'];
+header('Location: index.php');
+exit;
+} else {
+$error = 'Invalid email or password.';
+}
+}
+}
+require_once 'includes/header.php';
+?>
+<div class="auth-wrapper">
+<div class="auth-card fade-in">
+<h2><i class="fas fa-gem" style="color:var(--primary)"></i> Welcome Back</h2>
+
+-- 8 of 50 --
+
+58
+<p class="subtitle">Login to your Fashionista account</p>
+<?php if ($error): ?>
+<div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?= $error
+?></div>
+<?php endif; ?>
+<form method="POST" action="">
+<div class="form-group">
+<label for="email"><i class="fas fa-envelope"></i> Email Address</label>
+<input type="email" id="email" name="email" placeholder="Enter your email"
+required value="<?= isset($email) ? $email : '' ?>">
+</div>
+<div class="form-group">
+<label for="password"><i class="fas fa-lock"></i> Password</label>
+<input type="password" id="password" name="password" placeholder="Enter
+your password" required>
+</div>
+<button type="submit" class="form-btn"><i class="fas fa-sign-in-alt"></i>
+Login</button>
+</form>
+<p class="form-link">Don't have an account? <a href="register.php">Register
+here</a></p>
+</div>
+</div>
+<?php require_once 'includes/footer.php'; ?>
+Registration:
+<?php
+$pageTitle = 'Register';
+require_once 'config/database.php';
+if (isLoggedIn()) { header('Location: index.php'); exit; }
+$error = ''; $success = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$name = sanitize($_POST['full_name'] ?? '');
+
+-- 9 of 50 --
+
+59
+$email = sanitize($_POST['email'] ?? '');
+$phone = sanitize($_POST['phone'] ?? '');
+$address = sanitize($_POST['address'] ?? '');
+$password = $_POST['password'] ?? '';
+$confirm = $_POST['confirm_password'] ?? '';
+if (empty($name) || empty($email) || empty($phone) || empty($address) ||
+empty($password)) {
+$error = 'All fields are required.';
+} elseif ($password !== $confirm) {
+$error = 'Passwords do not match.';
+} elseif (strlen($password) < 6) {
+$error = 'Password must be at least 6 characters.';
+} else {
+$stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+$stmt->execute([$email]);
+if ($stmt->fetch()) {
+$error = 'Email already registered.';
+} else {
+$hash = password_hash($password, PASSWORD_DEFAULT);
+$stmt = $pdo->prepare("INSERT INTO users (full_name, email, phone, address,
+password) VALUES (?, ?, ?, ?, ?)");
+$stmt->execute([$name, $email, $phone, $address, $hash]);
+$success = 'Registration successful! You can now login.';
+}
+}
+}
+require_once 'includes/header.php';
+?>
+<div class="auth-wrapper">
+<div class="auth-card fade-in">
+<h2><i class="fas fa-gem" style="color:var(--primary)"></i> Create Account</h2>
+<p class="subtitle">Join Fashionista today</p>
+
+-- 10 of 50 --
+
+60
+<?php if ($error): ?>
+<div class="alert alert-error"><i class="fas fa-exclamation-circle"></i> <?= $error
+?></div>
+<?php endif; ?>
+<?php if ($success): ?>
+<div class="alert alert-success"><i class="fas fa-check-circle"></i> <?= $success
+?></div>
+<?php endif; ?>
+<form method="POST" action="">
+<div class="form-group">
+<label for="full_name"><i class="fas fa-user"></i> Full Name</label>
+<input type="text" id="full_name" name="full_name" placeholder="Enter your full
+name" required value="<?= isset($name) ? $name : '' ?>">
+</div>
+<div class="form-group">
+<label for="email"><i class="fas fa-envelope"></i> Email Address</label>
+<input type="email" id="email" name="email" placeholder="Enter your email"
+required value="<?= isset($email) ? $email : '' ?>">
+</div>
+<div class="form-group">
+<label for="phone"><i class="fas fa-phone"></i> Phone Number</label>
+<input type="tel" id="phone" name="phone" placeholder="Enter your phone
+number" required value="<?= isset($phone) ? $phone : '' ?>">
+</div>
+<div class="form-group">
+<label for="address"><i class="fas fa-map-marker-alt"></i> Address</label>
+<textarea id="address" name="address" placeholder="Enter your full address"
+required rows="3"><?= isset($address) ? $address : '' ?></textarea>
+</div>
+<div class="form-group">
+<label for="password"><i class="fas fa-lock"></i> Password</label>
+<input type="password" id="password" name="password" placeholder="Create a
+password (min 6 chars)" required>
+
+-- 11 of 50 --
+
+61
+</div>
+<div class="form-group">
+<label for="confirm_password"><i class="fas fa-lock"></i> Confirm
+Password</label>
+<input type="password" id="confirm_password" name="confirm_password"
+placeholder="Confirm your password" required>
+</div>
+<button type="submit" class="form-btn"><i class="fas fa-user-plus"></i>
+Register</button>
+</form>
+<p class="form-link">Already have an account? <a href="login.php">Login
+here</a></p>
+</div>
+</div>
+<?php require_once 'includes/footer.php'; ?>
+Logout:
+<?php
+require_once 'config/database.php';
+session_destroy();
+header('Location: index.php');
+exit;
+?>
+View Products:
+<?php
+$pageTitle = 'Products';
+require_once 'config/database.php';
+// Build query with filters
+$where = []; $params = [];
+if (!empty($_GET['category'])) {
+$where[] = "c.slug = ?"; $params[] = $_GET['category'];
+}
+if (!empty($_GET['search'])) {
+
+-- 12 of 50 --
+
+62
+$where[] = "(p.name LIKE ? OR p.description LIKE ?)";
+$params[] = '%'.$_GET['search'].'%'; $params[] = '%'.$_GET['search'].'%';
+}
+if (!empty($_GET['min_price'])) {
+$where[] = "p.price >= ?"; $params[] = $_GET['min_price'];
+}
+if (!empty($_GET['max_price'])) {
+$where[] = "p.price <= ?"; $params[] = $_GET['max_price'];
+}
+if (!empty($_GET['size'])) {
+$where[] = "p.sizes LIKE ?"; $params[] = '%'.$_GET['size'].'%';
+}
+$sql = "SELECT p.*, c.name as category_name, c.slug as category_slug FROM products p
+JOIN categories c ON p.category_id = c.id";
+if ($where) $sql .= " WHERE " . implode(" AND ", $where);
+$sort = $_GET['sort'] ?? 'newest';
+switch($sort) {
+case 'price_low': $sql .= " ORDER BY p.price ASC"; break;
+case 'price_high': $sql .= " ORDER BY p.price DESC"; break;
+case 'discount': $sql .= " ORDER BY p.discount DESC"; break;
+default: $sql .= " ORDER BY p.created_at DESC";
+}
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$products = $stmt->fetchAll();
+$categories = $pdo->query("SELECT * FROM categories ORDER BY name")->fetchAll();
+require_once 'includes/header.php';
+?>
+<div class="page-header">
+<div class="container">
+<h1>Our Products</h1>
+<div class="breadcrumb">
+
+-- 13 of 50 --
+
+63
+<a href="<?= SITE_URL ?>">Home</a> <span>/</span> <span>Products</span>
+<?php if(!empty($_GET['category'])): ?><span>/</span> <span><?=
+sanitize($_GET['category']) ?></span><?php endif; ?>
+</div>
+</div>
+</div>
+<section class="section">
+<div class="container">
+<div class="shop-layout">
+<!-- Filters Sidebar -->
+<div class="filter-sidebar">
+<form id="filter-form" method="GET">
+<div class="filter-group">
+<h4><i class="fas fa-th-list"></i> Categories</h4>
+<?php foreach($categories as $cat): ?>
+<label>
+<input type="radio" name="category" value="<?= $cat['slug'] ?>" <?=
+($_GET['category'] ?? '') == $cat['slug'] ? 'checked' : '' ?> onchange="applyFilters()">
+<?= sanitize($cat['name']) ?>
+</label>
+<?php endforeach; ?>
+<label>
+<input type="radio" name="category" value="" <?=
+empty($_GET['category']) ? 'checked' : '' ?> onchange="applyFilters()">
+All Categories
+</label>
+</div>
+<div class="filter-group">
+<h4><i class="fas fa-rupee-sign"></i> Price Range</h4>
+<div class="price-range">
+<input type="number" name="min_price" placeholder="Min" value="<?=
+$_GET['min_price'] ?? '' ?>">
+
+-- 14 of 50 --
+
+64
+<span>-</span>
+<input type="number" name="max_price" placeholder="Max" value="<?=
+$_GET['max_price'] ?? '' ?>">
+</div>
+</div>
+<div class="filter-group">
+<h4><i class="fas fa-ruler"></i> Size</h4>
+<?php foreach(['S','M','L','XL','XXL','Free Size'] as $s): ?>
+<label>
+<input type="radio" name="size" value="<?= $s ?>" <?= ($_GET['size'] ??
+'') == $s ? 'checked' : '' ?> onchange="applyFilters()">
+<?= $s ?>
+</label>
+<?php endforeach; ?>
+</div>
+<div class="filter-group">
+<h4><i class="fas fa-sort"></i> Sort By</h4>
+<select name="sort" onchange="applyFilters()"
+style="width:100%;padding:8px;border:1px solid var(--border);border-radius:var(--radius-
+sm);">
+<option value="newest" <?= $sort=='newest'?'selected':'' ?>>Newest
+First</option>
+<option value="price_low" <?= $sort=='price_low'?'selected':'' ?>>Price:
+Low to High</option>
+<option value="price_high" <?= $sort=='price_high'?'selected':'' ?>>Price:
+High to Low</option>
+<option value="discount" <?= $sort=='discount'?'selected':'' ?>>Highest
+Discount</option>
+</select>
+</div>
+<?php if(!empty($_GET['search'])): ?>
+<input type="hidden" name="search" value="<?= sanitize($_GET['search'])
+?>">
+
+-- 15 of 50 --
+
+65
+<?php endif; ?>
+<button type="submit" class="btn btn-primary btn-sm"
+style="width:100%;margin-top:10px;"><i class="fas fa-filter"></i> Apply Filters</button>
+<a href="products.php" class="btn btn-outline btn-sm"
+style="width:100%;margin-top:8px;text-align:center;"><i class="fas fa-times"></i> Clear
+All</a>
+</form>
+</div>
+<!-- Products Grid -->
+<div>
+<?php if(!empty($_GET['search'])): ?>
+<p style="margin-bottom:20px; color:var(--text-light);">Showing results for
+"<strong><?= sanitize($_GET['search']) ?></strong>" (<?= count($products) ?> found)</p>
+<?php endif; ?>
+<?php if(empty($products)): ?>
+<div class="empty-state">
+<i class="fas fa-search"></i>
+<h3>No Products Found</h3>
+<p>Try adjusting your filters or search criteria.</p>
+<a href="products.php" class="btn btn-primary">View All Products</a>
+</div>
+<?php else: ?>
+<div class="products-grid">
+<?php foreach($products as $p):
+$discountedPrice = getDiscountedPrice($p['price'], $p['discount']);
+?>
+<div class="product-card">
+<div class="product-image">
+<a href="product-detail.php?id=<?= $p['id'] ?>">
+<img src="<?= SITE_URL ?>/assets/images/products/<?= $p['image']
+?>" alt="<?= sanitize($p['name']) ?>" onerror="this.src='https://images.unsplash.com/photo-
+1558618666-fcd25c85f82e?w=400&h=500&fit=crop'">
+</a>
+
+-- 16 of 50 --
+
+66
+<?php if($p['discount'] > 0): ?>
+<span class="product-badge"><?= $p['discount'] ?>% OFF</span>
+<?php endif; ?>
+<div class="product-actions">
+<button class="product-action-btn" onclick="toggleWishlist(<?=
+$p['id'] ?>, this)"><i class="fas fa-heart"></i></button>
+<a href="product-detail.php?id=<?= $p['id'] ?>" class="product-action-
+btn"><i class="fas fa-eye"></i></a>
+</div>
+</div>
+<div class="product-info">
+<span class="product-category"><?= sanitize($p['category_name'])
+?></span>
+<h3><a href="product-detail.php?id=<?= $p['id'] ?>"><?=
+sanitize($p['name']) ?></a></h3>
+<div class="product-price">
+<span class="price-current"><?= formatPrice($discountedPrice)
+?></span>
+<?php if($p['discount'] > 0): ?>
+<span class="price-original"><?= formatPrice($p['price'])
+?></span>
+<?php endif; ?>
+</div>
+<div class="product-rating">
+<div class="stars"><?php for($i=1;$i<=5;$i++) echo '<i class="fas fa-
+star"></i>'; ?></div>
+</div>
+</div>
+</div>
+<?php endforeach; ?>
+</div>
+<?php endif; ?>
+</div>
+
+-- 17 of 50 --
+
+67
+</div>
+</div>
+</section>
+<?php require_once 'includes/footer.php'; ?>
+Cart:
+<?php
+$pageTitle = 'Shopping Cart';
+require_once 'config/database.php';
+redirectIfNotLoggedIn();
+$stmt = $pdo->prepare("SELECT c.*, p.name, p.price, p.discount, p.image, p.stock FROM
+cart c JOIN products p ON c.product_id = p.id WHERE c.user_id = ? ORDER BY
+c.created_at DESC");
+$stmt->execute([$_SESSION['user_id']]);
+$cartItems = $stmt->fetchAll();
+$subtotal = 0;
+foreach ($cartItems as $item) { $subtotal += getDiscountedPrice($item['price'],
+$item['discount']) * $item['quantity']; }
+$shipping = $subtotal >= 999 ? 0 : 99;
+$total = $subtotal + $shipping;
+require_once 'includes/header.php';
+?>
+<div class="page-header"><div class="container"><h1>Shopping Cart</h1><div
+class="breadcrumb"><a href="<?= SITE_URL ?>">Home</a> <span>/</span>
+<span>Cart</span></div></div></div>
+<section class="section"><div class="container">
+<?php if(empty($cartItems)): ?>
+<div class="empty-state"><i class="fas fa-shopping-bag"></i><h3>Your Cart is
+Empty</h3><p>Looks like you haven't added anything yet.</p><a href="products.php"
+class="btn btn-primary">Start Shopping</a></div>
+<?php else: ?>
+<div style="overflow-x:auto;">
+<table class="cart-table">
+
+-- 18 of 50 --
+
+68
+<thead><tr><th>Product</th><th>Price</th><th>Quantity</th><th>Total</th><th>Act
+ion</th></tr></thead>
+<tbody>
+<?php foreach($cartItems as $item):
+$dp = getDiscountedPrice($item['price'], $item['discount']);
+?>
+<tr>
+<td><div class="cart-product"><img src="<?= SITE_URL
+?>/assets/images/products/<?= $item['image'] ?>" alt=""
+onerror="this.src='https://images.unsplash.com/photo-1558618666-
+fcd25c85f82e?w=100&h=100&fit=crop'"><div class="cart-product-info"><h4><a
+href="product-detail.php?id=<?= $item['product_id'] ?>"><?= sanitize($item['name'])
+?></a></h4><p>Size: <?= sanitize($item['size']) ?></p></div></div></td>
+<td><?= formatPrice($dp) ?></td>
+<td><div class="qty-selector"><button class="qty-btn" onclick="updateCartQty(<?=
+$item['id'] ?>, <?= $item['quantity']-1 ?>)">-</button><input type="text" class="qty-input"
+value="<?= $item['quantity'] ?>" readonly style="width:40px"><button class="qty-btn"
+onclick="updateCartQty(<?= $item['id'] ?>, <?= $item['quantity']+1
+?>)">+</button></div></td>
+<td><strong><?= formatPrice($dp * $item['quantity']) ?></strong></td>
+<td><button class="btn btn-danger btn-sm" onclick="removeFromCart(<?=
+$item['id'] ?>)"><i class="fas fa-trash"></i></button></td>
+</tr>
+<?php endforeach; ?>
+</tbody>
+</table>
+</div>
+<div class="cart-summary">
+<h3>Order Summary</h3>
+<div class="summary-row"><span>Subtotal</span><span><?= formatPrice($subtotal)
+?></span></div>
+<div class="summary-row"><span>Shipping</span><span><?= $shipping == 0 ?
+'FREE' : formatPrice($shipping) ?></span></div>
+
+-- 19 of 50 --
+
+69
+<div class="summary-row total"><span>Total</span><span><?= formatPrice($total)
+?></span></div>
+<a href="checkout.php" class="btn btn-primary" style="width:100%;margin-
+top:16px;justify-content:center;"><i class="fas fa-lock"></i> Proceed to Checkout</a>
+<a href="products.php" class="btn btn-outline" style="width:100%;margin-
+top:8px;justify-content:center;">Continue Shopping</a>
+</div>
+<?php endif; ?>
+</div></section>
+<?php require_once 'includes/footer.php'; ?>
+Check Out:
+<?php
+$pageTitle = 'Checkout';
+require_once 'config/database.php';
+redirectIfNotLoggedIn();
+$stmt = $pdo->prepare("SELECT c.*, p.name, p.price, p.discount, p.image, p.stock FROM
+cart c JOIN products p ON c.product_id = p.id WHERE c.user_id = ?");
+$stmt->execute([$_SESSION['user_id']]);
+$cartItems = $stmt->fetchAll();
+if (empty($cartItems)) { header('Location: cart.php'); exit; }
+$subtotal = 0;
+foreach ($cartItems as $item) { $subtotal += getDiscountedPrice($item['price'],
+$item['discount']) * $item['quantity']; }
+$shipping = $subtotal >= 999 ? 0 : 99;
+$total = $subtotal + $shipping;
+// Get user details
+$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+$stmt->execute([$_SESSION['user_id']]);
+$user = $stmt->fetch();
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$name = sanitize($_POST['name'] ?? '');
+
+-- 20 of 50 --
+
+70
+$phone = sanitize($_POST['phone'] ?? '');
+$address = sanitize($_POST['address'] ?? '');
+$city = sanitize($_POST['city'] ?? '');
+$pincode = sanitize($_POST['pincode'] ?? '');
+if (empty($name) || empty($phone) || empty($address) || empty($city) || empty($pincode)) {
+$error = 'All fields are required.';
+} else {
+try {
+$pdo->beginTransaction();
+// Create order
+$stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount,
+shipping_name, shipping_phone, shipping_address, shipping_city, shipping_pincode,
+payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, 'COD')");
+$stmt->execute([$_SESSION['user_id'], $total, $name, $phone, $address, $city,
+$pincode]);
+$orderId = $pdo->lastInsertId();
+// Add order items & update stock
+foreach ($cartItems as $item) {
+$dp = getDiscountedPrice($item['price'], $item['discount']);
+$stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id,
+product_name, price, quantity, size) VALUES (?, ?, ?, ?, ?, ?)");
+$stmt->execute([$orderId, $item['product_id'], $item['name'], $dp,
+$item['quantity'], $item['size']]);
+$pdo->prepare("UPDATE products SET stock = stock - ? WHERE id = ?")-
+>execute([$item['quantity'], $item['product_id']]);
+}
+// Clear cart
+$pdo->prepare("DELETE FROM cart WHERE user_id = ?")-
+>execute([$_SESSION['user_id']]);
+$pdo->commit();
+header('Location: order-history.php?success=1');
+exit;
+} catch (Exception $e) {
+
+-- 21 of 50 --
+
+71
+$pdo->rollBack();
+$error = 'Something went wrong. Please try again.';
+}
+}
+}
+require_once 'includes/header.php';
+?>
+<div class="page-header"><div class="container"><h1>Checkout</h1><div
+class="breadcrumb"><a href="<?= SITE_URL ?>">Home</a> <span>/</span> <a
+href="cart.php">Cart</a> <span>/</span> <span>Checkout</span></div></div></div>
+<section class="section"><div class="container">
+<?php if($error): ?><div class="alert alert-error"><i class="fas fa-exclamation-
+circle"></i> <?= $error ?></div><?php endif; ?>
+<div class="checkout-grid">
+<div class="checkout-form">
+<h2 style="font-family:var(--font-display);margin-bottom:20px;">Shipping
+Details</h2>
+<form method="POST">
+<div class="form-group"><label>Full Name</label><input type="text"
+name="name" required value="<?= sanitize($user['full_name']) ?>"></div>
+<div class="form-group"><label>Phone Number</label><input type="tel"
+name="phone" required value="<?= sanitize($user['phone']) ?>"></div>
+<div class="form-group"><label>Address</label><textarea name="address"
+rows="3" required><?= sanitize($user['address']) ?></textarea></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+<div class="form-group"><label>City</label><input type="text" name="city"
+required placeholder="City"></div>
+<div class="form-group"><label>Pincode</label><input type="text"
+name="pincode" required placeholder="Pincode"></div>
+</div>
+<div style="background:var(--primary-bg);padding:16px;border-radius:var(--
+radius-sm);margin:16px 0;">
+
+-- 22 of 50 --
+
+72
+<h4><i class="fas fa-money-bill-wave" style="color:var(--success)"></i>
+Payment Method</h4>
+<p style="color:var(--text-mid);margin-top:6px;"><i class="fas fa-check-circle"
+style="color:var(--success)"></i> Cash on Delivery (COD)</p>
+</div>
+<button type="submit" class="form-btn"><i class="fas fa-check"></i> Place Order
+(<?= formatPrice($total) ?>)</button>
+</form>
+</div>
+<div class="order-summary">
+<h3 style="font-family:var(--font-display);margin-bottom:20px;">Order
+Summary</h3>
+<?php foreach($cartItems as $item): $dp = getDiscountedPrice($item['price'],
+$item['discount']); ?>
+<div class="order-item">
+<img src="<?= SITE_URL ?>/assets/images/products/<?= $item['image'] ?>"
+alt="" onerror="this.src='https://images.unsplash.com/photo-1558618666-
+fcd25c85f82e?w=80&h=80&fit=crop'">
+<div><h4 style="font-size:0.9rem;"><?= sanitize($item['name']) ?></h4><p
+style="color:var(--text-light);font-size:0.8rem;">Size: <?= $item['size'] ?> × <?=
+$item['quantity'] ?></p><p style="font-weight:600;color:var(--primary-dark);font-
+size:0.9rem;"><?= formatPrice($dp * $item['quantity']) ?></p></div>
+</div>
+<?php endforeach; ?>
+<div class="summary-row" style="margin-
+top:16px;"><span>Subtotal</span><span><?= formatPrice($subtotal) ?></span></div>
+<div class="summary-row"><span>Shipping</span><span><?= $shipping == 0 ?
+'FREE' : formatPrice($shipping) ?></span></div>
+<div class="summary-row total"><span>Total</span><span><?= formatPrice($total)
+?></span></div>
+</div>
+</div>
+</div></section>
+
+-- 23 of 50 --
+
+73
+<?php require_once 'includes/footer.php'; ?>
+Products:
+<?php
+$pageTitle = 'Product Details';
+require_once 'config/database.php';
+$id = (int)($_GET['id'] ?? 0);
+if (!$id) { header('Location: products.php'); exit; }
+$stmt = $pdo->prepare("SELECT p.*, c.name as category_name, c.slug as category_slug
+FROM products p JOIN categories c ON p.category_id = c.id WHERE p.id = ?");
+$stmt->execute([$id]);
+$product = $stmt->fetch();
+if (!$product) { header('Location: products.php'); exit; }
+$discountedPrice = getDiscountedPrice($product['price'], $product['discount']);
+// Get additional images
+$stmt = $pdo->prepare("SELECT * FROM product_images WHERE product_id = ?");
+$stmt->execute([$id]);
+$images = $stmt->fetchAll();
+// Get reviews
+$stmt = $pdo->prepare("SELECT r.*, u.full_name FROM reviews r JOIN users u ON
+r.user_id = u.id WHERE r.product_id = ? ORDER BY r.created_at DESC");
+$stmt->execute([$id]);
+$reviews = $stmt->fetchAll();
+$avgRating = 0;
+if ($reviews) { $avgRating = round(array_sum(array_column($reviews, 'rating')) /
+count($reviews), 1); }
+// Related products
+$stmt = $pdo->prepare("SELECT p.*, c.name as category_name FROM products p JOIN
+categories c ON p.category_id = c.id WHERE p.category_id = ? AND p.id != ? LIMIT 4");
+$stmt->execute([$product['category_id'], $id]);
+$related = $stmt->fetchAll();
+// Check wishlist
+$inWishlist = false;
+
+-- 24 of 50 --
+
+74
+if (isLoggedIn()) {
+$stmt = $pdo->prepare("SELECT id FROM wishlist WHERE user_id = ? AND product_id
+= ?");
+$stmt->execute([$_SESSION['user_id'], $id]);
+$inWishlist = (bool)$stmt->fetch();
+}
+$sizes = explode(',', $product['sizes']);
+$pageTitle = $product['name'];
+require_once 'includes/header.php';
+?>
+<div class="page-header">
+<div class="container">
+<div class="breadcrumb">
+<a href="<?= SITE_URL ?>">Home</a> <span>/</span>
+<a href="products.php">Products</a> <span>/</span>
+<a href="products.php?category=<?= $product['category_slug'] ?>"><?=
+sanitize($product['category_name']) ?></a> <span>/</span>
+<span><?= sanitize($product['name']) ?></span>
+</div>
+</div>
+</div>
+<section class="product-detail">
+<div class="container">
+<div class="product-detail-grid">
+<!-- Gallery -->
+<div class="product-gallery">
+<div class="main-image">
+<img src="<?= SITE_URL ?>/assets/images/products/<?= $product['image'] ?>"
+alt="<?= sanitize($product['name']) ?>" id="mainImg"
+onerror="this.src='https://images.unsplash.com/photo-1558618666-
+fcd25c85f82e?w=600&h=700&fit=crop'">
+</div>
+<div class="thumb-images">
+
+-- 25 of 50 --
+
+75
+<img src="<?= SITE_URL ?>/assets/images/products/<?= $product['image'] ?>"
+alt="Main" class="active" onclick="changeMainImage(this.src, this)"
+onerror="this.src='https://images.unsplash.com/photo-1558618666-
+fcd25c85f82e?w=100&h=100&fit=crop'">
+<?php foreach($images as $img): ?>
+<img src="<?= SITE_URL ?>/assets/images/products/<?= $img['image_path']
+?>" alt="Gallery" onclick="changeMainImage(this.src, this)"
+onerror="this.style.display='none'">
+<?php endforeach; ?>
+</div>
+</div>
+<!-- Info -->
+<div class="product-detail-info">
+<span class="product-category"><?= sanitize($product['category_name'])
+?></span>
+<h1><?= sanitize($product['name']) ?></h1>
+<div class="product-rating" style="margin:12px 0;">
+<div class="stars">
+<?php for($i=1;$i<=5;$i++): ?>
+<i class="fas fa-star" style="color:<?= $i <= round($avgRating) ? 'var(--
+warning)' : 'var(--border)' ?>"></i>
+<?php endfor; ?>
+</div>
+<span class="rating-count"><?= $avgRating ?> (<?= count($reviews) ?>
+reviews)</span>
+</div>
+<div class="detail-price">
+<span class="price-current"><?= formatPrice($discountedPrice) ?></span>
+<?php if($product['discount'] > 0): ?>
+<span class="price-original"><?= formatPrice($product['price']) ?></span>
+<span class="discount-tag"><?= $product['discount'] ?>% OFF</span>
+<?php endif; ?>
+
+-- 26 of 50 --
+
+76
+</div>
+<p style="color:var(--text-mid); line-height:1.8; margin:16px 0;"><?=
+sanitize($product['description']) ?></p>
+<p style="font-weight:600; color:<?= $product['stock'] > 0 ? 'var(--success)' : 'var(-
+-danger)' ?>;">
+<i class="fas fa-<?= $product['stock'] > 0 ? 'check-circle' : 'times-circle' ?>"></i>
+<?= $product['stock'] > 0 ? 'In Stock ('.$product['stock'].' available)' : 'Out of
+Stock' ?>
+</p>
+<!-- Size -->
+<div class="size-selector">
+<h4>Select Size</h4>
+<div class="size-options">
+<?php foreach($sizes as $i => $s): ?>
+<button class="size-btn <?= $i === 0 ? 'active' : '' ?>"
+onclick="selectSize(this)" data-size="<?= trim($s) ?>"><?= trim($s) ?></button>
+<?php endforeach; ?>
+</div>
+</div>
+<!-- Quantity -->
+<div class="qty-selector">
+<h4>Quantity</h4>
+<button class="qty-btn" onclick="changeQty(-1)">-</button>
+<input type="number" class="qty-input" value="1" min="1" max="10"
+readonly>
+<button class="qty-btn" onclick="changeQty(1)">+</button>
+</div>
+<!-- Actions -->
+<div class="detail-actions">
+<button class="btn btn-primary" onclick="addToCart(<?= $product['id'] ?>,
+document.querySelector('.size-btn.active')?.dataset.size)" <?= $product['stock'] < 1 ?
+'disabled' : '' ?>>
+
+-- 27 of 50 --
+
+77
+<i class="fas fa-shopping-bag"></i> Add to Cart
+</button>
+<button class="btn btn-outline <?= $inWishlist ? 'wishlisted' : '' ?>"
+onclick="toggleWishlist(<?= $product['id'] ?>, this)">
+<i class="fas fa-heart"></i> <?= $inWishlist ? 'In Wishlist' : 'Add to Wishlist'
+?>
+</button>
+</div>
+</div>
+</div>
+<!-- Reviews -->
+<div class="reviews-section">
+<div class="section-header" style="text-align:left;">
+<h2>Reviews & Ratings</h2>
+<div class="section-divider" style="margin-left:0;"></div>
+</div>
+<?php if(isLoggedIn()): ?>
+<div class="review-form" style="background:var(--white);border:1px solid var(--
+border);border-radius:var(--radius);padding:24px;margin-bottom:30px;">
+<h4 style="margin-bottom:12px;">Write a Review</h4>
+<div class="star-rating-input">
+<?php for($i=1;$i<=5;$i++): ?>
+<i class="fas fa-star <?= $i <= 5 ? 'active' : '' ?>" onclick="setRating(<?= $i
+?>)"></i>
+<?php endfor; ?>
+</div>
+<textarea id="review-text" placeholder="Share your experience with this
+product..."></textarea>
+<button class="btn btn-primary btn-sm" onclick="submitReview(<?= $product['id']
+?>)" style="margin-top:12px;"><i class="fas fa-paper-plane"></i> Submit Review</button>
+</div>
+<?php endif; ?>
+<?php if(empty($reviews)): ?>
+
+-- 28 of 50 --
+
+78
+<p style="color:var(--text-light); padding:20px 0;">No reviews yet. Be the first to
+review this product!</p>
+<?php else: ?>
+<?php foreach($reviews as $r): ?>
+<div class="review-card">
+<div class="review-header">
+<div>
+<span class="reviewer-name"><?= sanitize($r['full_name']) ?></span>
+<div class="stars" style="margin-top:4px;">
+<?php for($i=1;$i<=5;$i++): ?>
+<i class="fas fa-star" style="color:<?= $i <= $r['rating'] ? 'var(--
+warning)' : 'var(--border)' ?>;font-size:0.8rem;"></i>
+<?php endfor; ?>
+</div>
+</div>
+<span class="review-date"><?= date('M d, Y', strtotime($r['created_at']))
+?></span>
+</div>
+<p class="review-text"><?= sanitize($r['review_text']) ?></p>
+</div>
+<?php endforeach; ?>
+<?php endif; ?>
+</div>
+<!-- Related Products -->
+<?php if($related): ?>
+<div style="margin-top:60px;">
+<div class="section-header">
+<h2>You May Also Like</h2>
+<div class="section-divider"></div>
+</div>
+<div class="products-grid">
+<?php foreach($related as $p):
+
+-- 29 of 50 --
+
+79
+$dp = getDiscountedPrice($p['price'], $p['discount']);
+?>
+<div class="product-card">
+<div class="product-image">
+<a href="product-detail.php?id=<?= $p['id'] ?>">
+<img src="<?= SITE_URL ?>/assets/images/products/<?= $p['image'] ?>"
+alt="<?= sanitize($p['name']) ?>" onerror="this.src='https://images.unsplash.com/photo-
+1558618666-fcd25c85f82e?w=400&h=500&fit=crop'">
+</a>
+<?php if($p['discount'] > 0): ?><span class="product-badge"><?=
+$p['discount'] ?>% OFF</span><?php endif; ?>
+</div>
+<div class="product-info">
+<span class="product-category"><?= sanitize($p['category_name']) ?></span>
+<h3><a href="product-detail.php?id=<?= $p['id'] ?>"><?=
+sanitize($p['name']) ?></a></h3>
+<div class="product-price">
+<span class="price-current"><?= formatPrice($dp) ?></span>
+<?php if($p['discount'] > 0): ?><span class="price-original"><?=
+formatPrice($p['price']) ?></span><?php endif; ?>
+</div>
+</div>
+</div>
+<?php endforeach; ?>
+</div>
+</div>
+<?php endif; ?>
+</div>
+</section>
+<?php require_once 'includes/footer.php'; ?>
+Feedback:
+<?php
+
+-- 30 of 50 --
+
+80
+$pageTitle = 'Feedback';
+require_once 'config/database.php';
+$success = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$name = sanitize($_POST['name'] ?? '');
+$email = sanitize($_POST['email'] ?? '');
+$rating = (int)($_POST['rating'] ?? 5);
+$message = sanitize($_POST['message'] ?? '');
+$userId = isLoggedIn() ? $_SESSION['user_id'] : null;
+if ($name && $email && $message) {
+$stmt = $pdo->prepare("INSERT INTO feedback (user_id, name, email, rating,
+message) VALUES (?, ?, ?, ?, ?)");
+$stmt->execute([$userId, $name, $email, $rating, $message]);
+$success = 'Thank you for your feedback! We truly appreciate it.';
+}
+}
+require_once 'includes/header.php';
+?>
+<div class="page-header"><div class="container"><h1>Feedback</h1><div
+class="breadcrumb"><a href="<?= SITE_URL ?>">Home</a> <span>/</span>
+<span>Feedback</span></div></div></div>
+<section class="section"><div class="container" style="max-width:700px;">
+<?php if($success): ?><div class="alert alert-success"><i class="fas fa-check-circle"></i>
+<?= $success ?></div><?php endif; ?>
+<div style="background:var(--white);border:1px solid var(--border);border-radius:var(--
+radius);padding:30px;">
+<h2 style="font-family:var(--font-display);margin-bottom:8px;">We'd Love Your
+Feedback</h2>
+<p style="color:var(--text-light);margin-bottom:24px;">Help us improve your shopping
+experience</p>
+<form method="POST">
+
+-- 31 of 50 --
+
+81
+<div class="form-group"><label>Name</label><input type="text" name="name"
+required placeholder="Your name" value="<?= isLoggedIn() ?
+sanitize($_SESSION['user_name']) : '' ?>"></div>
+<div class="form-group"><label>Email</label><input type="email" name="email"
+required placeholder="Your email" value="<?= isLoggedIn() ?
+sanitize($_SESSION['user_email']) : '' ?>"></div>
+<div class="form-group"><label>Rating</label><select name="rating"><option
+value="5"> Excellent</option><option value="4">
+Good</option><option value="3"> Average</option><option value="2">
+Below Average</option><option value="1"> Poor</option></select></div>
+<div class="form-group"><label>Your Feedback</label><textarea name="message"
+rows="5" required placeholder="Tell us about your experience..."></textarea></div>
+<button type="submit" class="form-btn"><i class="fas fa-comment-dots"></i>
+Submit Feedback</button>
+</form>
+</div>
+</div></section>
+<?php require_once 'includes/footer.php'; ?>
+Wishlist:
+<?php
+$pageTitle = 'Wishlist';
+require_once 'config/database.php';
+redirectIfNotLoggedIn();
+$stmt = $pdo->prepare("SELECT w.*, p.name, p.price, p.discount, p.image, p.stock, c.name
+as category_name FROM wishlist w JOIN products p ON w.product_id = p.id JOIN
+categories c ON p.category_id = c.id WHERE w.user_id = ? ORDER BY w.created_at
+DESC");
+$stmt->execute([$_SESSION['user_id']]);
+$items = $stmt->fetchAll();
+require_once 'includes/header.php';
+?>
+
+-- 32 of 50 --
+
+82
+<div class="page-header"><div class="container"><h1>My Wishlist</h1><div
+class="breadcrumb"><a href="<?= SITE_URL ?>">Home</a> <span>/</span>
+<span>Wishlist</span></div></div></div>
+<section class="section"><div class="container">
+<?php if(empty($items)): ?>
+<div class="empty-state"><i class="fas fa-heart"></i><h3>Your Wishlist is
+Empty</h3><p>Save your favorite items here for later.</p><a href="products.php"
+class="btn btn-primary">Browse Products</a></div>
+<?php else: ?>
+<div class="products-grid">
+<?php foreach($items as $item):
+$dp = getDiscountedPrice($item['price'], $item['discount']);
+?>
+<div class="product-card">
+<div class="product-image">
+<a href="product-detail.php?id=<?= $item['product_id'] ?>">
+<img src="<?= SITE_URL ?>/assets/images/products/<?= $item['image'] ?>"
+alt="<?= sanitize($item['name']) ?>" onerror="this.src='https://images.unsplash.com/photo-
+1558618666-fcd25c85f82e?w=400&h=500&fit=crop'">
+</a>
+<?php if($item['discount'] > 0): ?><span class="product-badge"><?=
+$item['discount'] ?>% OFF</span><?php endif; ?>
+</div>
+<div class="product-info">
+<span class="product-category"><?= sanitize($item['category_name']) ?></span>
+<h3><a href="product-detail.php?id=<?= $item['product_id'] ?>"><?=
+sanitize($item['name']) ?></a></h3>
+<div class="product-price">
+<span class="price-current"><?= formatPrice($dp) ?></span>
+<?php if($item['discount'] > 0): ?><span class="price-original"><?=
+formatPrice($item['price']) ?></span><?php endif; ?>
+</div>
+<div style="display:flex;gap:8px;margin-top:12px;">
+
+-- 33 of 50 --
+
+83
+<button class="btn btn-primary btn-sm" onclick="addToCart(<?=
+$item['product_id'] ?>, 'M')"><i class="fas fa-shopping-bag"></i> Add to Cart</button>
+<button class="btn btn-danger btn-sm" onclick="removeFromWishlist(<?=
+$item['id'] ?>)"><i class="fas fa-trash"></i></button>
+</div>
+</div>
+</div>
+<?php endforeach; ?>
+</div>
+<?php endif; ?>
+</div></section>
+<?php require_once 'includes/footer.php'; ?>
+
+-- 34 of 50 --
+
+84
+5. USER INTERFACES
+1. Admin Side
+i. Login
+ii. Admin Dashboard
+
+-- 35 of 50 --
+
+85
+iii. Products
+iv. Add Product
+v. Orders
+
+-- 36 of 50 --
+
+86
+2. User Side
+i. Login 	ii. Registration
+iii. Home
+
+-- 37 of 50 --
+
+87
+iv. About
+v. Products
+vi. View Product
+
+-- 38 of 50 --
+
+88
+vii. Contact
+viii. Feedback
+ix. Wishlist
+
+-- 39 of 50 --
+
+89
+x. Cart
+xi. Checkout
+
+-- 40 of 50 --
+
+90
+6. TESTING
+Introduction:
+Testing is the process of checking whether the Fashionista website is working correctly and
+meeting the required conditions. It helps to identify errors, bugs, or differences between
+expected and actual results. In our project, software testing is used to ensure that all features
+like login, product browsing, cart, and order placement work properly under both normal and
+abnormal conditions. Testing mainly focuses on detecting errors and improving the quality of
+the system.
+Software testing has three main purposes:
+ Verification: Ensures that the system meets technical requirements such as correct
+login validation, proper database storage, and smooth functionality of modules.
+ Validation: Ensures that the system satisfies user needs like easy shopping experience,
+proper product display, and simple navigation.
+ Defect Detection: Identifies differences between expected output and actual output.
+These defects may occur due to errors in design, coding, or database handling.
+Two types of software testing:
+1. Black Box Testing:
+Black box testing is performed without knowing the internal code of the Fashionista system.
+In this method, we test the application by giving inputs and checking outputs.
+For example:
+ Entering login details and checking whether login is successful
+ Adding products to cart and verifying correct items are displayed
+ Placing an order and checking order confirmation
+This testing ensures that the system works correctly from the user’s point of view.
+2. White Box Testing:
+White box testing is done with knowledge of internal code and logic.
+In Fashionista, this includes:
+ Checking PHP code for login validation
+ Verifying database queries
+ Ensuring proper working of backend logic like cart and order processing
+This testing helps in checking code correctness and improving performance.
+
+-- 41 of 50 --
+
+91
+Test Reports:
+a. Unit Testing
+Unit tests are written from a programmer’s perspective. They ensure that a particular method of a class
+successfully performs a set of specific tasks. Each test confirms that a method produces the expected
+output when given a known input. Each test examines an individual component that is new or has been
+modified. Unit tests focus on functionality and reliability. Unit testing is done in a test environment
+prior to system integration. If a defect is discovered at unit test, the severity of the defect will dictate
+whether or not it will be fixed before the module is approved.
+User Login:
+SL NO 	TEST CONDITION 	EXPECTED OUTPUT 	TEST RESULT
+1. 	If @ is not present in email Id 	Please match the requested
+format
+Successful
+2. 	If email ID is empty 	Please fill out this field 	Successful
+3. 	If password is empty 	Please fill out this field 	Successful
+4. 	If password does not consist of
+6 characters
+Please fill out this field 	Successful
+User registration:
+SL NO 	TEST CONDITION 	EXPECTED
+OUTPUT
+TEST RESULT
+1. 	If name is empty 	Please fill out this filed 	Successful
+2. 	If @ is not present in email Id 	Please match the
+requested format
+Successful
+3. 	If email ID is empty 	Please fill out this field 	Successful
+4. 	If phone number is empty 	Please fill out this filed 	Successful
+5. 	If phone number is not in
+number
+Please match the
+requested format
+Successful
+6. 	If address is empty. 	Please fill out this field 	Successful
+7. 	If password is empty 	Please fill out this field 	Successful
+
+-- 42 of 50 --
+
+92
+8. 	If confirm password is empty Please fill out this field 	Successful
+Admin Login:
+Feedback:
+b. Integrate Testing:
+Integration testing examines all the components and modules that are new, changed, affected by a
+change, or needed to form a complete system. Integration testing requires involvement of other systems
+and interfaces with other applications, including those owned by an outside vendor, external partners,
+or the customer it is the phase of software testing in which individual software modules are combined
+and tested as a group. it follows unit testing and precedes system testing. integration testing takes as its
+input modules that have been unit tested, groups them in large aggregates, applies tests defined in an
+SL NO. 	TEST CONDITION 	EXPECTED RESULT 	RESULT
+1 	If admin clicks on login button without
+entering name and password.
+Please fill out this field 	Successful
+2 	If username is blank but password is
+entered.
+Please fill out this field 	Successful
+3 	If password is blank but username is
+entered.
+Please fill out this field 	Successful
+4 	If the username or password is
+incorrect.
+Invalid username and
+password.
+Successful
+SL
+NO
+TEST CONDITION 	EXPECTED OUTPUT 	TEST RESULT
+1. 	If username is empty 	Please fill out this filed 	Successful
+2. 	If @ is not present in
+email Id
+Please match the
+requested format
+Successful
+3. 	If email ID is empty 	Please fill out this field 	Successful
+4. 	If message column is
+empty
+Please fill out this filed 	Successful
+
+-- 43 of 50 --
+
+93
+integration test plan to those aggregates, and delivers as its output the integrated system ready for system
+testing.
+Therefore, without adequate testing, there is a greater risk that an application will inadequately deliver
+what was expected by the admins or that the final product will have problems such that the admins will
+eventually abandon it out of frustration. In either case, time and money are lost and the credibility and
+reputation of both the developers and the software is damaged.
+Admin Login:
+User Registration and Login:
+Admin Index Page:
+SL NO TEST CONDITION 	EXPECTED OUTPUT 	TEST RESULT
+1 	Login 	The site is redirected to admin
+Page/Dashboard
+Successful
+SL NO TEST CONDITION 	EXPECTED OUTPUT 	TEST RESULT
+1 	Registration 	The entered data is stored in the
+database and the site is redirected
+to login page
+Successful
+2 	Login 	The site is redirected to admin
+Page/Dashboard
+Successful
+SL NO TEST CONDITION 	EXPECTED RESULT 	RESULT
+1. 	Product List 	The site is redirected to Product list Page
+and the operations such as add, delete and
+edit is performed and also stock
+availability is checked.
+Successful
+3. 	Order List 	The site is redirected to Product list Page
+and the operations such as add, delete and
+edit is performed
+Successful
+4. 	Customer List 	The site is redirected to Customer list Page
+and the operations such as pending,
+delivered and edit is performed
+Successful
+
+-- 44 of 50 --
+
+94
+Users Index Page:
+c. System Testing:
+System testing is a level of software testing where a complete and integrated software system is tested.
+The purpose of this test is to evaluate the system's compliance with the specified requirements. It
+involves testing the entire application in a real-world environment to ensure that it functions correctly
+and meets the desired standards of performance, security, reliability, and usability. This type of testing
+encompasses a variety of tests, including functional, non-functional, and regression tests, to validate
+that the system behaves as expected under various conditions.
+System testing is a critical phase in software development where the entire integrated system is tested
+as a whole to ensure it meets specified requirements. This process involves evaluating both the
+functional and non-functional aspects of the system, such as performance, security, and usability, under
+realistic conditions. The aim is to detect any discrepancies between the actual and expected outcomes,
+verify the system's behaviour, and ensure that it operates correctly in the intended environment.
+SL NO TEST CONDITION 	EXCEPTED OUTPUT 	TEST RESULT
+1 	Home 	The site is redirected to Home
+Page
+Successful
+2 	Products 	This dropdown list contains
+various contains categories like
+bags, formal ware, ethnic ware
+etc.
+Successful
+3 	Wishlist 	This dropdown list contains the
+products which are added to
+purchase later
+Successful
+4 	About 	The site redirects to About us
+Page
+Successful
+5 	Feedback 	This site redirects to feedback
+Page in to the site
+Successful
+
+-- 45 of 50 --
+
+95
+7. CONCLUSION
+In conclusion, Fashionista aims to be a reliable online destination for women’s fashion needs.
+The website provides a wide range of trendy and high-quality products including clothing and
+accessories, ensuring style, comfort, and convenience for users.
+Our platform is designed to offer an easy and enjoyable shopping experience with features
+like product browsing, filtering, wishlist, cart, and order placement. The admin panel helps in
+efficient management of products, users, and orders, making the system smooth and
+organized.
+By focusing on user-friendly design, affordable pricing, and customer satisfaction,
+Fashionista creates a simple and effective e-commerce solution. The use of modern
+technologies ensures better performance, security, and reliability.
+As the system grows, future improvements like online payment methods and order tracking
+can be added to enhance functionality. Overall, Fashionista successfully demonstrates how an
+e-commerce platform can simplify shopping and improve user experience.
+
+-- 46 of 50 --
+
+96
+8. LIMITATIONS
+Despite its many advantages, Fashionista has certain limitations as an online fashion e-
+commerce website. One of the main limitations is that customers cannot physically check or
+try the products before purchasing, which may create uncertainty about size, fitting, or
+quality.
+Another limitation is that the system supports only Cash on Delivery (COD) as the payment
+method, which restricts users who prefer online payment options like UPI or cards.
+Additionally, the website does not provide an order tracking feature, so users cannot track the
+real-time status of their orders.
+The system is managed by a single admin, which may limit efficiency in handling large
+numbers of products, users, and orders. Also, the project is developed for academic and
+small-scale use, so it may not handle very high traffic or large-scale business operations.
+Addressing these limitations in the future will help improve user experience and make
+Fashionista a more powerful and scalable e-commerce platform.
+
+-- 47 of 50 --
+
+97
+9.SCOPE OF ENHANCEMENT (FUTURE SCOPE)
+The future scope of enhancement for Fashionista is wide and offers many opportunities to
+improve the online shopping experience. Introducing online payment options such as UPI,
+credit/debit cards, and net banking will make transactions faster and more convenient for
+users.
+Adding an order tracking system will allow customers to monitor their orders in real-time,
+improving transparency and user satisfaction. Enhancing the logistics and delivery system
+can ensure faster and more reliable product delivery.
+The product range can be expanded to include more brands, latest fashion trends, and
+personalized recommendations based on user preferences. Features like AI-based
+suggestions, chat support, and advanced filtering can further improve user experience.
+In the future, the system can also support multiple admins, mobile application integration,
+and better security features. By continuously improving and adapting to user needs,
+Fashionista can grow into a more advanced and scalable e-commerce platform.
+
+-- 48 of 50 --
+
+98
+10. ABBRIVATIONS & ACRONYMS:
+GUI 	Graphical User Interface
+DBMS 	Database Management System
+SRS 	System Requirement and Specification
+DFD 	Data Flow Diagram
+HTTP 	Hyper Text Transfer Protocol
+ADMIN 	The Administrator
+CFD 	Control Flow Diagram
+PHP 	Hyper Text Pre-Processor
+SQL 	Structured Query Language
+HTML 	Hyper Text Markup Language
+CSS 	Cascade Style Sheets
+
+-- 49 of 50 --
+
+99
+11. BIBLIOGRAPHY/REFERENCES
+Bibliography:
+ Core PHP Programming: Using PHP to Build Dynamic Web Site Book by Leon Atkinson
+ High-Performance MYSQL: Optimization, Backups, Replication, and more Book by Derek J.
+Balling and Jeremy Zawodny
+ Software Engineering by Pankaj Jalote
+ PHP Developer’s Guide by Greg Buczek
+Reference:
+ HTML, CSS, JavaScript Documentation
+ PHP Official Documentation
+ MySQL Official Documentation
+ W3School
+ GeeksforGeeks
+ Youtube Tutorials
+
+-- 50 of 50 --
+

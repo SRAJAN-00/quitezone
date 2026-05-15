@@ -9,7 +9,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 export default function TabLayout() {
   const colorScheme = useColorScheme() ?? "light";
   const theme = Colors[colorScheme];
-  const { isAuthenticated, isHydrating, user } = useAuth();
+  const { isAuthenticated, isHydrating } = useAuth();
 
   if (isHydrating) {
     return <AuthLoadingScreen />;
@@ -23,18 +23,25 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.tint,
+        tabBarActiveTintColor: colorScheme === "dark" ? "#F8F8FA" : "#1C1C1E",
         tabBarInactiveTintColor: theme.tabIconDefault,
         tabBarStyle: {
           backgroundColor: theme.tabBar,
           borderTopColor: theme.border,
-          height: 70,
-          paddingBottom: 8,
+          borderTopWidth: 1,
+          height: 78,
+          paddingBottom: 14,
           paddingTop: 8,
+          elevation: 8,
+          shadowColor: "#000000",
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.04,
+          shadowRadius: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "700",
+          fontSize: 10,
+          fontWeight: "500",
+          letterSpacing: 0,
         },
       }}
     >
@@ -55,8 +62,15 @@ export default function TabLayout() {
       <Tabs.Screen
         name="activity"
         options={{
-          title: "Activity",
-          tabBarIcon: ({ color, size }) => <MaterialIcons color={color} name="history" size={size} />,
+          href: null,
+          tabBarItemStyle: { display: "none" },
+        }}
+      />
+      <Tabs.Screen
+        name="feedback"
+        options={{
+          href: null,
+          tabBarItemStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
@@ -76,7 +90,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="admin"
         options={{
-          href: user?.role === "admin" ? undefined : null,
+          tabBarButton: () => null,
           title: "Admin",
           tabBarIcon: ({ color, size }) => <MaterialIcons color={color} name="admin-panel-settings" size={size} />,
         }}

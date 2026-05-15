@@ -4,12 +4,10 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
-  QuietBanner,
   QuietCard,
   QuietLoadingCard,
   QuietPill,
   QuietPrimaryButton,
-  QuietSecondaryButton,
   QuietScreen,
   QuietSectionHeader,
   QuietStateCard,
@@ -33,13 +31,12 @@ function formatTimestamp(timestamp: string) {
 
 export default function ActivityScreen() {
   const theme = getTheme(useColorScheme());
+  const isDark = theme.page !== "#F5F5F7";
   const { accessToken } = useAuth();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [manualBusy, setManualBusy] = useState<"enter" | "exit" | null>(null);
-  const [actionMessage, setActionMessage] = useState("");
   const [selectedZoneId, setSelectedZoneId] = useState("all");
   const lastLoadedAtRef = useRef(0);
 
@@ -101,47 +98,6 @@ export default function ActivityScreen() {
   const appliedCount = filteredEvents.filter(
     (event) => event.metadata?.ringerApplied && !event.metadata?.blocked,
   ).length;
-  const manualCount = filteredEvents.filter(
-    (event) => event.metadata?.source === "manual-v1",
-  ).length;
-
-  async function logManualTransition(transition: "enter" | "exit") {
-    if (!accessToken) {
-      return;
-    }
-
-    setManualBusy(transition);
-    setActionMessage("");
-    try {
-      const body =
-        transition === "enter"
-          ? {
-              transition,
-              zoneName: "Manual zone check",
-              previousMode: "normal",
-              modeApplied: "silent",
-              metadata: { source: "manual-v1" },
-            }
-          : {
-              transition,
-              zoneName: "Manual zone check",
-              previousMode: "silent",
-              modeApplied: "normal",
-              metadata: { source: "manual-v1" },
-            };
-      await apiRequest("/api/events/geofence-transition", {
-        method: "POST",
-        body,
-        token: accessToken,
-      });
-      setActionMessage(`Logged "${transition}" transition.`);
-      await loadEvents(true);
-    } catch (nextError) {
-      setActionMessage(getUserFacingError(nextError));
-    } finally {
-      setManualBusy(null);
-    }
-  }
 
   return (
     <QuietScreen theme={theme}>
@@ -183,25 +139,25 @@ export default function ActivityScreen() {
             <View style={styles.filterRow}>
               <Pressable
                 onPress={() => setSelectedZoneId("all")}
-                style={[
-                  styles.filterChip,
-                  {
-                    backgroundColor:
-                      selectedZoneId === "all" ? theme.accent : theme.input,
-                    borderColor:
-                      selectedZoneId === "all" ? theme.accent : theme.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color:
-                      selectedZoneId === "all"
-                        ? theme.accentTextOn
-                        : theme.text,
-                    fontWeight: "700",
-                  }}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor:
+                      selectedZoneId === "all" ? (isDark ? "#F8F8FA" : "#1C1C1E") : theme.input,
+                        borderColor:
+                      selectedZoneId === "all" ? (isDark ? "#F8F8FA" : "#1C1C1E") : theme.border,
+                      },
+                    ]}
                 >
+                  <Text
+                    style={{
+                      color:
+                      selectedZoneId === "all"
+                        ? (isDark ? "#111113" : "#FFFFFF")
+                        : theme.text,
+                      fontWeight: "700",
+                    }}
+                  >
                   All zones
                 </Text>
               </Pressable>
@@ -214,14 +170,14 @@ export default function ActivityScreen() {
                     style={[
                       styles.filterChip,
                       {
-                        backgroundColor: selected ? theme.accent : theme.input,
-                        borderColor: selected ? theme.accent : theme.border,
+                        backgroundColor: selected ? (isDark ? "#F8F8FA" : "#1C1C1E") : theme.input,
+                        borderColor: selected ? (isDark ? "#F8F8FA" : "#1C1C1E") : theme.border,
                       },
                     ]}
                   >
                     <Text
                       style={{
-                        color: selected ? theme.accentTextOn : theme.text,
+                        color: selected ? (isDark ? "#111113" : "#FFFFFF") : theme.text,
                         fontWeight: "700",
                       }}
                     >

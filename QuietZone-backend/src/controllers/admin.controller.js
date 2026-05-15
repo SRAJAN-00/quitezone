@@ -16,10 +16,22 @@ function toUserResponse(user) {
 }
 
 function toZoneResponse(zone) {
+  const hasCenter = Boolean(
+    zone &&
+      zone.center &&
+      Array.isArray(zone.center.coordinates) &&
+      zone.center.coordinates.length >= 2
+  );
+  const hasOwner = Boolean(zone && zone.ownerId);
+
   return {
     id: zone._id.toString(),
     name: zone.name,
-    ownerId: zone.ownerId?._id ? zone.ownerId._id.toString() : zone.ownerId.toString(),
+    ownerId: hasOwner
+      ? zone.ownerId?._id
+        ? zone.ownerId._id.toString()
+        : zone.ownerId.toString()
+      : null,
     ownerEmail: zone.ownerId?.email || null,
     radiusMeters: zone.radiusMeters,
     targetMode: zone.targetMode,
@@ -36,8 +48,8 @@ function toZoneResponse(zone) {
       notifyOnExit: true,
       onlyOnFailure: false,
     },
-    lat: zone.center.coordinates[1],
-    lng: zone.center.coordinates[0],
+    lat: hasCenter ? zone.center.coordinates[1] : null,
+    lng: hasCenter ? zone.center.coordinates[0] : null,
     createdAt: zone.createdAt,
     updatedAt: zone.updatedAt,
   };

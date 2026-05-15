@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "411472754208",
+    "project_id": "quitezone-e1e76",
+    "storage_bucket": "quitezone-e1e76.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:411472754208:android:b296c917d331a6aac12e45",
+        "android_client_info": {
+          "package_name": "com.anonymous.quitezone"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvi5QtjiTjvXjNEWZMmjBA_2LHlcEzkr4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:411472754208:android:b3f7883bd482dd57c12e45",
+        "android_client_info": {
+          "package_name": "quitezone.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvi5QtjiTjvXjNEWZMmjBA_2LHlcEzkr4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
